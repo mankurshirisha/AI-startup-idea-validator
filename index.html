@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Market Research Agent</title>
+    <!-- Modern Tailwind CSS for styling -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans p-6">
+
+    <div class="max-w-4xl w-full mx-auto mt-10 bg-slate-800 rounded-xl shadow-2xl p-8 border border-slate-700">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-amber-400 tracking-wide">AI Market Intelligence Agent</h1>
+            <p class="text-sm text-slate-400 mt-2">Enter your startup concept to retrieve live data and LLM-structured intelligence.</p>
+        </div>
+
+        <!-- Input Box -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium mb-2 text-slate-300">Your Startup Idea / Business Category</label>
+            <input type="text" id="ideaInput" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-4 text-base focus:outline-none focus:border-amber-400 placeholder-slate-600" placeholder="e.g., Custom handcrafted luxury bangles online store...">
+        </div>
+
+        <!-- Action Button -->
+        <button onclick="runMarketAnalysis()" id="analyzeBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-4 px-4 rounded-lg transition duration-200 cursor-pointer text-center">
+            Analyze Market & Competitors
+        </button>
+
+        <!-- Loading Indicator -->
+        <div id="loader" class="hidden text-center text-sm text-amber-400 animate-pulse my-6 font-medium">
+            Executing Agent Architecture (Validating ➔ Searching Tavily ➔ Processing with OpenRouter LLM)...
+        </div>
+
+        <!-- Results Blocks -->
+        <div id="resultsSection" class="hidden mt-8 space-y-6">
+            <hr class="border-slate-700">
+            
+            <div class="flex justify-between items-center bg-slate-950/50 p-4 rounded-lg border border-slate-800">
+                <span class="text-sm font-medium text-slate-400">Analysis Confidence Score:</span>
+                <span id="confidenceBlock" class="text-lg font-bold text-emerald-400">--</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Market Size Box -->
+                <div class="bg-slate-950 p-5 rounded-lg border border-slate-800">
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-amber-400 mb-2">Market Size & Metrics</h3>
+                    <p id="marketSizeBlock" class="text-sm text-slate-300 leading-relaxed">No data retrieved yet.</p>
+                </div>
+
+                <!-- Competitors Box -->
+                <div class="bg-slate-950 p-5 rounded-lg border border-slate-800">
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-amber-400 mb-2">Real Competitors</h3>
+                    <ul id="competitorsBlock" class="list-disc pl-5 text-sm text-slate-300 space-y-1">
+                        <!-- Competitors will appear here -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Verified Sources -->
+            <div class="bg-slate-950 p-5 rounded-lg border border-slate-800">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-3">Verified Sources Evaluated</h3>
+                <div id="sourcesBlock" class="flex flex-wrap gap-2 text-xs">
+                    <!-- Links will go here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Frontend Connection Script -->
+    <script>
+        async function runMarketAnalysis() {
+            const ideaInput = document.getElementById('ideaInput').value.trim();
+            const btn = document.getElementById('analyzeBtn');
+            const loader = document.getElementById('loader');
+            const resultsSection = document.getElementById('resultsSection');
+
+            if (!ideaInput) {
+                alert("Please type a business concept first!");
+                return;
+            }
+
+            // UI Loading state
+            loader.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+            btn.disabled = true;
+            btn.innerText = "Analyzing...";
+
+            try {
+                // Post directly to our Python server backend on port 8900
+                const response = await fetch('http://127.0.0.1:8900/api/search-agent', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idea: ideaInput })
+                });
+
+                if (!response.ok) {
+                    throw new Error("Server communication or pipeline failed.");
+                }
+
+                const data = await response.json();
+
+                // Inject structured items into DOM blocks
+                document.getElementById('confidenceBlock').innerText = data.confidence_score || "N/A";
+                document.getElementById('marketSizeBlock').innerText = data.market_size || "No explicit size metrics found.";
+                
+                // Clear and map competitors
+                const compList = document.getElementById('competitorsBlock');
+                compList.innerHTML = "";
+                if (data.real_competitors && data.real_competitors.length > 0) {
+                    data.real_competitors.forEach(comp => {
+                        const li = document.createElement('li');
+                        li.innerText = comp;
+                        compList.appendChild(li);
+                    });
+                } else {
+                    compList.innerHTML = "<li>No direct brands parsed.</li>";
+                }
+
+                // Clear and map clickable verified sources
+                const sourcesDiv = document.getElementById('sourcesBlock');
+                sourcesDiv.innerHTML = "";
+                if (data.verified_sources && data.verified_sources.length > 0) {
+                    data.verified_sources.forEach((url, index) => {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.target = "_blank";
+                        a.className = "bg-slate-800 text-amber-400 px-3 py-1.5 rounded border border-slate-700 hover:border-amber-400 transition";
+                        a.innerText = `Source [${index + 1}]`;
+                        sourcesDiv.appendChild(a);
+                    });
+                } else {
+                    sourcesDiv.innerHTML = "<span class='text-slate-500'>No source references returned.</span>";
+                }
+
+                // Show populated dashboard results block
+                resultsSection.classList.remove('hidden');
+
+            } catch (error) {
+                alert("Pipeline execution error: Make sure your Python server is fully running on port 8900.");
+            } finally {
+                loader.classList.add('hidden');
+                btn.disabled = false;
+                btn.innerText = "Analyze Market & Competitors";
+            }
+        }
+    </script>
+</body>
+</html>
