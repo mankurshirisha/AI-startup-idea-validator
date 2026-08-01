@@ -1,5 +1,7 @@
 import json
 import os
+import re
+from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -34,6 +36,75 @@ class CompetitorRequest(BaseModel):
     marketOpportunity: dict
     marketOpportunityScore: int
     recommendations: list
+
+
+def _normalize_website(website: object) -> str | None:
+    """Normalize competitor websites to official homepage URLs or None."""
+    if website is None:
+        return None
+
+    if not isinstance(website, str):
+        website = str(website)
+
+    website = website.strip()
+    if not website:
+        return None
+
+    if website.startswith("http://") or website.startswith("https://"):
+        return website
+
+    return f"https://{website}"
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _infer_competitor_website(competitor_name: str, search_results: list[dict]) -> str | None:
+    """Infer an official homepage URL from search results when possible."""
+    name_key = _normalize_text(competitor_name)
+    if not name_key:
+        return None
+
+    for result in search_results:
+        result_url = result.get("url", "")
+        content = result.get("content", "")
+        if not result_url:
+            continue
+
+        parsed_url = urlparse(result_url)
+        host_key = _normalize_text(parsed_url.netloc)
+        content_key = _normalize_text(content)
+
+        if name_key and (name_key in host_key or name_key in content_key):
+            return _normalize_website(result_url)
+
+    return None
+
+
+def _populate_competitor_websites(structured_output: dict, search_results: list[dict]) -> dict:
+    """Populate competitor websites using LLM output or search evidence."""
+    competitors = structured_output.get("competitors") or []
+    if not isinstance(competitors, list):
+        return structured_output
+
+    for competitor in competitors:
+        if not isinstance(competitor, dict):
+            continue
+
+        website = competitor.get("website")
+        normalized_website = _normalize_website(website)
+        if normalized_website is not None:
+            competitor["website"] = normalized_website
+            continue
+
+        inferred_website = _infer_competitor_website(
+            competitor.get("name", ""),
+            search_results,
+        )
+        competitor["website"] = inferred_website
+
+    return structured_output
 
 
 def run_competitor_discovery_agent(
@@ -168,6 +239,7 @@ Search Results:
 Identify the major competitors.
 
 Return ONLY valid JSON.
+For each competitor, populate the website field with the official homepage URL if it is confidently known. If no reliable official website can be identified, set website to null.
 
 {{
     "startupIdea":"{startup_idea}",
@@ -175,7 +247,7 @@ Return ONLY valid JSON.
     "competitors":[
         {{
             "name":"",
-            "website":"",
+            "website":null,
             "description":"",
             "key_features":[],
             "target_customers":"",
@@ -190,6 +262,7 @@ Return ONLY valid JSON.
         logger.info("Starting Gemini competitor analysis request")
         raw_choice = generate_content(prompt)
         structured_output = json.loads(raw_choice)
+        structured_output = _populate_competitor_websites(structured_output, processed_results)
         logger.info("Competitor discovery completed successfully")
         return structured_output
 
