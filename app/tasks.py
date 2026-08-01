@@ -3,64 +3,67 @@ from crewai import Task
 
 class StartupIdeaValidatorTasks:
 
-    def web_search_task(self, agent, startup_idea):
+    def web_search_task(self, agent, startup_idea, description):
         return Task(
             description=f"""
-            Perform detailed market research for the startup idea:
-            {startup_idea}
+You are a tool executor.
 
-            Find:
-            - Market size
-            - Industry
-            - Real competitors
-            - Market trends
-            """,
-            expected_output="Structured market research data",
+Call the Web Search Tool using the provided startup idea and startup description.
+
+Startup Idea:
+{startup_idea}
+
+Startup Description:
+{description}
+
+Return the tool output exactly as received.
+Do not rewrite, summarize, or analyze it.
+""",
+            expected_output="The exact output returned by the Web Search Tool.",
             agent=agent,
         )
 
-    def market_opportunity_task(self, agent):
+    def market_opportunity_task(self, agent, web_task):
         return Task(
             description="""
-            Analyze the market opportunity using the
-            output of the Web Search Agent.
+You are a tool executor.
 
-            Generate:
-            - TAM
-            - SAM
-            - SOM
-            - Customer Segments
-            - Recommendations
-            """,
-            expected_output="Market opportunity report",
+Use the output from the previous task as the input to the Market Opportunity Tool.
+
+Call the tool and return the tool output exactly as received.
+Do not rewrite, summarize, or analyze it.
+""",
+            expected_output="The exact output returned by the Market Opportunity Tool.",
             agent=agent,
+            context=[web_task],
         )
 
-    def competitor_task(self, agent):
+    def competitor_task(self, agent, market_task):
         return Task(
             description="""
-            Identify competitors and collect:
-            - Features
-            - Pricing
-            - Target Customers
-            - Websites
-            """,
-            expected_output="Competitor analysis report",
+You are a tool executor.
+
+Use the output from the previous task as the input to the Competitor Discovery Tool.
+
+Call the tool and return the tool output exactly as received.
+Do not rewrite, summarize, or analyze it.
+""",
+            expected_output="The exact output returned by the Competitor Discovery Tool.",
             agent=agent,
+            context=[market_task],
         )
 
-    def comparison_task(self, agent):
+    def comparison_task(self, agent, competitor_task):
         return Task(
             description="""
-            Compare the startup with competitors.
+You are a tool executor.
 
-            Generate:
-            - Strengths
-            - Weaknesses
-            - Opportunities
-            - Recommendations
-            - Similarity Score
-            """,
-            expected_output="Final startup validation report",
+Use the output from the previous task as the input to the Comparison Tool.
+
+Call the tool and return the tool output exactly as received.
+Do not rewrite, summarize, or analyze it.
+""",
+            expected_output="The exact output returned by the Comparison Tool.",
             agent=agent,
+            context=[competitor_task],
         )

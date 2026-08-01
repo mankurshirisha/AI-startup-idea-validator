@@ -1,18 +1,40 @@
-import os
-import requests
 import json
+import os
 from datetime import datetime
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from tavily import TavilyClient
+
+from app.gemini_client import generate_content
+from app.logging_config import get_logger
 
 load_dotenv()
 
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+logger = get_logger(__name__)
 
-app = FastAPI()
+# ==========================================================
+# API KEYS
+# ==========================================================
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+if not TAVILY_API_KEY:
+    raise RuntimeError("TAVILY_API_KEY not found.")
+
+# ==========================================================
+# CLIENTS
+# ==========================================================
+
+tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+
+# ==========================================================
+# FASTAPI
+# ==========================================================
+
+app = FastAPI(title="Web Search Agent", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,184 +44,170 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==========================================================
+# REQUEST MODEL
+# ==========================================================
+
 
 class IdeaRequest(BaseModel):
     idea: str
     description: str
 
 
-@app.post("/api/search-agent")
-def web_search_agent(payload: IdeaRequest):
+# ==========================================================
+# WEB SEARCH AGENT
+# ==========================================================
 
-    user_input = payload.idea.strip()
-    description = payload.description.strip()
 
-    # ==========================================
-    # 1. INPUT VALIDATION & RE-CHECKS
-    # ==========================================
+def run_web_search_agent(idea: str, description: str):
+    """Run the web search analysis workflow.
 
-    if not user_input or len(user_input) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid input. Please enter a concrete startup concept or business category."
-        )
+    Args:
+        idea: The startup idea to analyze.
+        description: A description of the startup idea.
 
-    if not description or len(description) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Please enter a meaningful startup description."
-        )
+    Returns:
+        dict: A structured market research payload.
 
-    # ==========================================
-    # 2. INTENT & CONTEXT ANALYSIS
-    # ==========================================
+    Raises:
+        HTTPException: If the input is invalid or the external search or Gemini call fails.
+    """
+    logger.info("Web search agent request received")
 
-    optimized_query = (
-        f"{user_input} {description} "
-        "global revenue market size statistics top competitors brands"
+    idea = idea.strip()
+    description = description.strip()
+
+    if len(idea) < 3:
+        raise HTTPException(status_code=400, detail="Invalid startup idea.")
+
+    if len(description) < 10:
+        raise HTTPException(status_code=400, detail="Description is too short.")
+
+    query = (
+        f"{idea}. "
+        f"{description}. "
+        "Market size, industry, market trends, competitors, target users."
     )
 
-    # ==========================================
-    # 3. TAVILY SEARCH API
-    # ==========================================
-
-    url = "https://api.tavily.com/search"
-
-    tavily_payload = {
-        "api_key": TAVILY_API_KEY,
-        "query": optimized_query,
-        "search_depth": "advanced",
-        "include_domains": []
-    }
+    # ======================================================
+    # TAVILY SEARCH
+    # ======================================================
 
     try:
-        response = requests.post(url, json=tavily_payload)
-        response.raise_for_status()
-        search_data = response.json()
+        logger.info("Starting Tavily search request")
+        search = tavily_client.search(query=query, search_depth="advanced")
+
+        processed_sources = []
+
+        for item in search.get("results", []):
+
+            processed_sources.append(
+                {"url": item.get("url"), "content": item.get("content")}
+            )
+
+        logger.info(
+            "Tavily search completed successfully with %s results",
+            len(processed_sources),
+        )
 
     except Exception:
+        logger.exception("Tavily search failed while processing startup idea")
         raise HTTPException(
             status_code=500,
-            detail="Tavily live data fetch failed."
-        )
+            detail="Unable to retrieve search results from the search service.",
+        ) from None
 
-    # ==========================================
-    # 4. RESULT PROCESSING & DE-DUPLICATION
-    # ==========================================
+    # ======================================================
+    # GEMINI PROMPT
+    # ======================================================
 
-    seen_contents = set()
-    processed_sources = []
+    prompt = f"""
+You are an expert Startup Market Research Agent.
 
-    for result in search_data.get("results", []):
-
-        content_snippet = result.get("content", "")
-        source_url = result.get("url", "")
-
-        if content_snippet and content_snippet not in seen_contents:
-
-            seen_contents.add(content_snippet)
-
-            processed_sources.append({
-                "url": source_url,
-                "content": content_snippet
-            })
-
-    if not processed_sources:
-        raise HTTPException(
-            status_code=404,
-            detail="No relevant market research data found."
-        )
-
-    # ==========================================
-    # 5. SOURCE VERIFICATION & LLM
-    # ==========================================
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    current_year = datetime.now().year
-
-    body = {
-        "model": "openai/gpt-4o-mini",
-        "response_format": {
-            "type": "json_object"
-        },
-        "messages": [
-            {
-                "role": "user",
-                "content": f"""
-You are the structured response builder engine for a business intelligence system.
+Current Year:
+{datetime.now().year}
 
 Startup Idea:
-"{user_input}"
+{idea}
 
-Startup Description:
-"{description}"
-
-Current Year Context: {current_year}
+Description:
+{description}
 
 Verified Sources:
 {json.dumps(processed_sources, indent=2)}
 
-Execute the following architectural blocks:
-
-1. Source Verification & Trust Evaluation
-2. Information Freshness
-3. Confidence Scoring
-4. Structured Response Building
-
-Return ONLY a JSON object matching exactly:
+Analyze the startup idea and return ONLY valid JSON.
 
 {{
-    "market_size": "Explicit data-driven market size or revenue metric",
-    "real_competitors": [
-        "Competitor A",
-        "Competitor B",
-        "Competitor C"
+    "market_size":"",
+    "industry":"",
+    "market_trends":[
     ],
-    "confidence_score": "85%",
-    "verified_sources": [
-        "url1",
-        "url2"
+    "real_competitors":[
+    ],
+    "confidence_score":"",
+    "verified_sources":[
     ]
 }}
 """
-            }
-        ]
-    }
+
+    # ======================================================
+    # GEMINI
+    # ======================================================
 
     try:
-
-        openrouter_response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=body
-        )
-
-        openrouter_response.raise_for_status()
-
-        raw_choice = openrouter_response.json()["choices"][0]["message"]["content"]
-
-        structured_output = json.loads(raw_choice)
-
-        return structured_output
+        logger.info("Starting Gemini analysis request")
+        raw = generate_content(prompt)
+        result = json.loads(raw)
+        logger.info("Web search agent completed successfully")
+        return result
 
     except Exception:
-
+        logger.exception("Gemini analysis failed while processing startup idea")
         raise HTTPException(
             status_code=500,
-            detail="Structured data extraction pipeline failed."
-        )
+            detail="Unable to generate market analysis from the AI service.",
+        ) from None
 
+
+# ==========================================================
+# ROUTES
+# ==========================================================
+
+
+@app.get("/")
+def home():
+    """Return a basic health message for the web search agent.
+
+    Returns:
+        dict: A simple status message.
+    """
+    return {"message": "Web Search Agent Running"}
+
+
+@app.post("/api/search-agent")
+def search_agent(request: IdeaRequest):
+    """Expose the web search agent through the FastAPI endpoint.
+
+    Args:
+        request: The incoming search request payload.
+
+    Returns:
+        dict: The market research payload generated by the agent.
+
+    Raises:
+        HTTPException: If the request is invalid or the analysis fails.
+    """
+
+    return run_web_search_agent(request.idea, request.description)
+
+
+# ==========================================================
+# MAIN
+# ==========================================================
 
 if __name__ == "__main__":
 
     import uvicorn
 
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=8900
-    )
+    uvicorn.run(app, host="127.0.0.1", port=8900)

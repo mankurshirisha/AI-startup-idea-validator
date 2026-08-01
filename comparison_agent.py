@@ -1,26 +1,25 @@
 import json
-import logging
 import os
 import re
 from typing import List, Optional
 
-import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+try:
+    from app.config import GEMINI_API_KEY
+except ImportError:
+    from .app.config import GEMINI_API_KEY
+
+from app.gemini_client import generate_content
+from app.logging_config import get_logger
+
 load_dotenv()
 os.environ.setdefault("UVICORN_PORT", "8902")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger("comparison_agent")
-
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL_NAME = "google/gemini-2.5-flash"
+logger = get_logger("comparison_agent")
 
 app = FastAPI()
 
@@ -89,7 +88,9 @@ def _normalize_competitor(competitor: Competitor | dict | None) -> dict:
         "name": str(competitor_data.get("name") or "Unknown Competitor").strip(),
         "website": str(competitor_data.get("website") or "").strip(),
         "description": str(competitor_data.get("description") or "").strip(),
-        "key_features": normalize_feature_list(competitor_data.get("key_features") or []),
+        "key_features": normalize_feature_list(
+            competitor_data.get("key_features") or []
+        ),
         "target_customers": str(competitor_data.get("target_customers") or "").strip(),
         "pricing": str(competitor_data.get("pricing") or "").strip(),
         "source": str(competitor_data.get("source") or "").strip(),
@@ -153,109 +154,229 @@ def _fallback_startup_features(startup: str, description: str) -> dict:
     return {"startup_features": features}
 
 
-def _call_openrouter(prompt: str, timeout: int = 15) -> str:
-    """Send a request to OpenRouter and return the response content."""
+def _call_gemini(prompt: str, timeout: int = 15) -> str:
+    """Send a request to Google AI Studio Gemini and return the response content."""
 
-    if not OPENROUTER_API_KEY:
-        raise ValueError("OpenRouter API key is missing.")
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    body = {
-        "model": MODEL_NAME,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-    }
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is not configured.")
 
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=body,
-            timeout=timeout,
-        )
-    except requests.Timeout as exc:
-        raise ValueError(f"OpenRouter request timed out: {exc}") from exc
-    except requests.RequestException as exc:
-        raise ValueError(f"OpenRouter request failed: {exc}") from exc
-
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        status_code = exc.response.status_code if exc.response is not None else "unknown"
-        detail = exc.response.text if exc.response is not None else str(exc)
-        raise ValueError(f"OpenRouter returned HTTP {status_code}: {detail}") from exc
-
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise ValueError("OpenRouter returned invalid JSON.") from exc
-
-    try:
-        content = payload["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValueError("OpenRouter returned an unexpected response format.") from exc
-
-    if content.startswith("```"):
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
-        content = content.strip()
-
-    return content
+        return generate_content(prompt)
+    except Exception:
+        logger.exception("Gemini comparison request failed")
+        raise ValueError(
+            "Unable to generate comparison analysis at the moment."
+        ) from None
 
 
-def extract_startup_features(startup: str, description: str):
-    """Extract startup features from the provided description."""
-
-    prompt = f"""
-You are an expert startup analyst.
+def _build_single_analysis_prompt(
+    startup: str, description: str, industry: str, competitors: List[dict]
+) -> str:
+    return f"""
+You are an expert startup strategist and product analyst.
 
 Startup Idea:
 {startup}
 
-Description:
+Startup Description:
 {description}
 
-Extract the core product features of this startup.
+Industry:
+{industry}
 
-Return ONLY valid JSON in the following format:
+Competitors:
+{json.dumps(competitors, indent=2)}
+
+Analyze the startup against the competitors and return ONLY valid JSON with this schema:
 
 {{
-  "startup_features": [
-    "feature 1",
-    "feature 2",
-    "feature 3"
-  ]
+  "startup_features": ["feature 1", "feature 2"],
+  "feature_comparison": [
+    {{
+      "competitor": "Competitor Name",
+      "common_features": ["feature 1"],
+      "startup_unique_features": ["feature 2"],
+      "competitor_unique_features": ["feature 3"]
+    }}
+  ],
+  "similarity_scores": [
+    {{"competitor": "Competitor Name", "similarity_score": 80.0}}
+  ],
+  "market_gaps": [
+    {{
+      "competitor": "Competitor Name",
+      "startup_advantages": ["feature 1"],
+      "competitor_advantages": ["feature 2"],
+      "gap_summary": "..."
+    }}
+  ],
+  "strategic_recommendations": ["..."],
+  "threats": ["..."],
+  "business_insights": {{
+    "strengths": ["..."],
+    "weaknesses": ["..."],
+    "opportunities": ["..."],
+    "recommendations": ["..."]
+  }},
+  "final_value_proposition": "..."
 }}
 
 Do not include explanations.
 """
 
+
+def _fallback_analysis_payload(
+    startup: str, description: str, competitors: List[dict]
+) -> dict:
+    fallback_startup_features = _fallback_startup_features(startup, description)
+    startup_features = fallback_startup_features.get("startup_features", [])
+
+    comparison_results = []
+    normalized_startup_features = normalize_feature_list(startup_features)
+
+    for competitor in competitors:
+        normalized_competitor_features = normalize_feature_list(
+            competitor.get("key_features") or []
+        )
+        startup_set = set(normalized_startup_features)
+        competitor_set = set(normalized_competitor_features)
+
+        comparison_results.append(
+            {
+                "competitor": competitor.get("name", "Unknown Competitor"),
+                "common_features": list(startup_set & competitor_set),
+                "startup_unique_features": list(startup_set - competitor_set),
+                "competitor_unique_features": list(competitor_set - startup_set),
+            }
+        )
+
+    similarity_results = []
+    for result in comparison_results:
+        total_startup_features = len(result.get("startup_unique_features", [])) + len(
+            result.get("common_features", [])
+        )
+        similarity_score = (
+            round(
+                (len(result.get("common_features", [])) / total_startup_features) * 100,
+                1,
+            )
+            if total_startup_features
+            else 0.0
+        )
+        similarity_results.append(
+            {
+                "competitor": result["competitor"],
+                "similarity_score": similarity_score,
+            }
+        )
+
+    gap_results = []
+    for result in comparison_results:
+        startup_advantages = result.get("startup_unique_features", [])
+        competitor_advantages = result.get("competitor_unique_features", [])
+
+        if startup_advantages:
+            gap_summary = f"Startup has advantages in: {', '.join(startup_advantages)}"
+        elif competitor_advantages:
+            gap_summary = f"Competitor leads in: {', '.join(competitor_advantages)}"
+        else:
+            gap_summary = "No clear feature gap identified."
+
+        gap_results.append(
+            {
+                "competitor": result["competitor"],
+                "startup_advantages": startup_advantages,
+                "competitor_advantages": competitor_advantages,
+                "gap_summary": gap_summary,
+            }
+        )
+
+    return {
+        "startup_features": startup_features,
+        "feature_comparison": comparison_results,
+        "similarity_scores": similarity_results,
+        "market_gaps": gap_results,
+        "strategic_recommendations": [],
+        "threats": [],
+        "business_insights": _default_insights(),
+        "final_value_proposition": f"{startup} addresses core market needs with a focused product experience.",
+    }
+
+
+def _normalize_single_analysis_payload(
+    payload: dict, startup: str, description: str, competitors: List[dict]
+) -> dict:
+    if not isinstance(payload, dict):
+        return _fallback_analysis_payload(startup, description, competitors)
+
+    startup_features = payload.get("startup_features")
+    if not isinstance(startup_features, (list, tuple, set)):
+        startup_features = _fallback_startup_features(startup, description).get(
+            "startup_features", []
+        )
+
+    feature_comparison = payload.get("feature_comparison", [])
+    if not isinstance(feature_comparison, list):
+        feature_comparison = []
+
+    similarity_scores = payload.get("similarity_scores", [])
+    if not isinstance(similarity_scores, list):
+        similarity_scores = []
+
+    market_gaps = payload.get("market_gaps", [])
+    if not isinstance(market_gaps, list):
+        market_gaps = []
+
+    business_insights = payload.get("business_insights", {})
+    if not isinstance(business_insights, dict):
+        business_insights = _default_insights()
+
+    return {
+        "startup_features": normalize_feature_list(list(startup_features)),
+        "feature_comparison": feature_comparison,
+        "similarity_scores": similarity_scores,
+        "market_gaps": market_gaps,
+        "strategic_recommendations": payload.get("strategic_recommendations", []),
+        "threats": payload.get("threats", []),
+        "business_insights": {
+            "strengths": business_insights.get("strengths", []),
+            "weaknesses": business_insights.get("weaknesses", []),
+            "opportunities": business_insights.get("opportunities", []),
+            "recommendations": business_insights.get("recommendations", []),
+        },
+        "final_value_proposition": payload.get("final_value_proposition", ""),
+    }
+
+
+def _generate_single_analysis_payload(
+    startup: str, description: str, industry: str, competitors: List[dict]
+) -> dict:
+    logger.info("Starting comparison analysis request")
+    prompt = _build_single_analysis_prompt(startup, description, industry, competitors)
+
     try:
-        content = _call_openrouter(prompt)
-    except ValueError:
-        logger.warning("Falling back to local startup feature extraction")
-        return _fallback_startup_features(startup, description)
-
-    parsed_content = _parse_json_payload(content)
-    if not isinstance(parsed_content, dict):
-        logger.warning("Startup feature payload was invalid; using fallback extraction")
-        return _fallback_startup_features(startup, description)
-    if not isinstance(parsed_content.get("startup_features"), (list, tuple, set)):
-        logger.warning("Startup feature payload structure was invalid; using fallback extraction")
-        return _fallback_startup_features(startup, description)
-
-    return parsed_content
+        logger.info("Starting Gemini comparison analysis request")
+        content = _call_gemini(prompt)
+        parsed_content = _parse_json_payload(content, {})
+        payload = _normalize_single_analysis_payload(
+            parsed_content, startup, description, competitors
+        )
+        logger.info("Comparison analysis completed successfully")
+        return payload
+    except (ValueError, KeyError, TypeError):
+        logger.exception("Single Gemini analysis failed; using fallback analysis")
+        return _fallback_analysis_payload(startup, description, competitors)
 
 
 def normalize_feature_list(features: List[str]) -> List[str]:
+    """Normalize a list of feature names for comparison.
+
+    Args:
+        features: The feature names to normalize.
+
+    Returns:
+        List[str]: A normalized list of lowercase feature names with duplicates removed.
+    """
     """Normalize feature names for reliable comparison."""
 
     if features is None:
@@ -281,6 +402,15 @@ def normalize_feature_list(features: List[str]) -> List[str]:
 
 
 def compare_features(startup_features: List[str], competitors: List[Competitor]):
+    """Compare startup features against each competitor's features.
+
+    Args:
+        startup_features: The startup's feature list.
+        competitors: A list of competitor objects to compare against.
+
+    Returns:
+        list: A list of comparison results for each competitor.
+    """
     """Compare startup features against each competitor's features."""
 
     comparison_results = []
@@ -291,8 +421,8 @@ def compare_features(startup_features: List[str], competitors: List[Competitor])
         normalized_competitor_features = normalized_competitor["key_features"]
 
         try:
-            if not OPENROUTER_API_KEY:
-                raise ValueError("OpenRouter API key is not configured.")
+            if not GEMINI_API_KEY:
+                raise ValueError("GEMINI_API_KEY is not configured.")
 
             prompt = f"""
 You are an expert product analyst.
@@ -317,15 +447,21 @@ Return ONLY valid JSON in this exact format:
 Do not include explanations.
 """
 
-            content = _call_openrouter(prompt)
+            content = _call_gemini(prompt)
             parsed_result = _parse_json_payload(content, {})
 
             if not isinstance(parsed_result, dict):
-                raise ValueError("OpenRouter returned an invalid comparison payload.")
+                raise ValueError("Gemini returned an invalid comparison payload.")
 
-            common_features = normalize_feature_list(parsed_result.get("common_features", []))
-            unique_startup_features = normalize_feature_list(parsed_result.get("startup_unique_features", []))
-            unique_competitor_features = normalize_feature_list(parsed_result.get("competitor_unique_features", []))
+            common_features = normalize_feature_list(
+                parsed_result.get("common_features", [])
+            )
+            unique_startup_features = normalize_feature_list(
+                parsed_result.get("startup_unique_features", [])
+            )
+            unique_competitor_features = normalize_feature_list(
+                parsed_result.get("competitor_unique_features", [])
+            )
 
         except (ValueError, TypeError, AttributeError, KeyError):
             startup_set = set(normalized_startup_features)
@@ -347,126 +483,36 @@ Do not include explanations.
     return comparison_results
 
 
-def calculate_similarity(comparison_results: List[dict]) -> List[dict]:
-    """Calculate similarity percentage for each competitor."""
+def run_comparison_agent(
+    startup_idea: str, description: str, industry: str, competitors: list
+):
+    """Run the comparison analysis workflow.
 
-    similarity_results = []
+    Args:
+        startup_idea: The startup idea to evaluate.
+        description: A description of the startup idea.
+        industry: The industry associated with the startup.
+        competitors: A list of competitor payloads to compare against.
 
-    for result in comparison_results:
-        total_startup_features = len(result.get("startup_unique_features", [])) + len(result.get("common_features", []))
+    Returns:
+        dict: A structured comparison response with business insights.
 
-        if total_startup_features == 0:
-            similarity_score = 0.0
-        else:
-            similarity_score = round((len(result.get("common_features", [])) / total_startup_features) * 100, 1)
-
-        similarity_results.append(
-            {
-                "competitor": result["competitor"],
-                "similarity_score": similarity_score,
-            }
-        )
-
-    return similarity_results
-
-
-def identify_gaps(comparison_results: List[dict]) -> List[dict]:
-    """Summarize startup and competitor advantages."""
-
-    gap_results = []
-
-    for result in comparison_results:
-        startup_advantages = result.get("startup_unique_features", [])
-        competitor_advantages = result.get("competitor_unique_features", [])
-
-        if startup_advantages:
-            gap_summary = f"Startup has advantages in: {', '.join(startup_advantages)}"
-        elif competitor_advantages:
-            gap_summary = f"Competitor leads in: {', '.join(competitor_advantages)}"
-        else:
-            gap_summary = "No clear feature gap identified."
-
-        gap_results.append(
-            {
-                "competitor": result["competitor"],
-                "startup_advantages": startup_advantages,
-                "competitor_advantages": competitor_advantages,
-                "gap_summary": gap_summary,
-            }
-        )
-
-    return gap_results
-
-
-def generate_business_insights(
-    startup: str,
-    description: str,
-    comparison_results: List[dict],
-    similarity_results: List[dict],
-    gap_results: List[dict],
-) -> dict:
-    """Generate business insights from startup and comparison data."""
-
-    prompt = f"""
-You are an expert startup strategist.
-
-Startup Idea:
-{startup}
-
-Startup Description:
-{description}
-
-Comparison Results:
-{json.dumps(comparison_results, indent=2)}
-
-Similarity Scores:
-{json.dumps(similarity_results, indent=2)}
-
-Market Gaps:
-{json.dumps(gap_results, indent=2)}
-
-Return ONLY valid JSON in the following format:
-{{
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "opportunities": ["..."],
-  "recommendations": ["..."]
-}}
-
-Do not include explanations.
-"""
-
+    Raises:
+        HTTPException: If the input is invalid or the comparison workflow fails.
+    """
+    logger.info("Comparison agent request received")
     try:
-        content = _call_openrouter(prompt)
-        parsed_content = _parse_json_payload(content, {})
-
-        if not isinstance(parsed_content, dict):
-            logger.warning("Business insight payload was invalid; using defaults")
-            return _default_insights()
-
-        return {
-            "strengths": parsed_content.get("strengths", []),
-            "weaknesses": parsed_content.get("weaknesses", []),
-            "opportunities": parsed_content.get("opportunities", []),
-            "recommendations": parsed_content.get("recommendations", []),
-        }
-    except (ValueError, KeyError, TypeError):
-        logger.warning("Business insights generation failed; using defaults")
-        return _default_insights()
-
-
-@app.post("/api/comparison-agent")
-def comparison_agent(payload: ComparisonRequest):
-    logger.info("Incoming API request: /api/comparison-agent")
-    try:
-        startup = payload.startupIdea.strip()
-        description = payload.description.strip()
-        industry = payload.industry.strip()
+        startup = startup_idea.strip()
+        description = description.strip()
+        industry = industry.strip()
 
         logger.info("Received startup idea: %s", startup)
-        logger.info("Competitors received: %s", len(payload.competitors))
+        logger.info("Competitors received: %s", len(competitors))
+        logger.info("Starting comparison processing")
 
-        normalized_competitors = [_normalize_competitor(competitor) for competitor in payload.competitors]
+        normalized_competitors = [
+            _normalize_competitor(competitor) for competitor in competitors
+        ]
 
         if not startup:
             logger.warning("Validation failed: startup idea is empty")
@@ -489,40 +535,70 @@ def comparison_agent(payload: ComparisonRequest):
                 detail="Industry cannot be empty.",
             )
 
-        if len(payload.competitors) == 0:
+        if len(competitors) == 0:
             logger.warning("Validation failed: no competitors provided")
             raise HTTPException(
                 status_code=400,
                 detail="At least one competitor is required.",
             )
 
-        startup_features = extract_startup_features(startup, description)
-        comparison = compare_features(startup_features["startup_features"], normalized_competitors)
-        similarity = calculate_similarity(comparison)
-        gaps = identify_gaps(comparison)
-        insights = generate_business_insights(startup, description, comparison, similarity, gaps)
+        analysis_payload = _generate_single_analysis_payload(
+            startup,
+            description,
+            industry,
+            [
+                _normalize_competitor(competitor)
+                for competitor in normalized_competitors
+            ],
+        )
+
+        startup_features = analysis_payload.get("startup_features", [])
+        comparison = analysis_payload.get("feature_comparison", [])
+        similarity = analysis_payload.get("similarity_scores", [])
+        gaps = analysis_payload.get("market_gaps", [])
+        insights = analysis_payload.get("business_insights", _default_insights())
 
         response_payload = {
             "status": "success",
             "startup": startup,
             "description": description,
             "industry": industry,
-            "startup_features": startup_features["startup_features"],
+            "startup_features": startup_features,
             "comparison": comparison,
             "similarity_scores": similarity,
             "market_gaps": gaps,
             "business_insights": insights,
         }
-        logger.info("API success response prepared for startup idea: %s", startup)
+        logger.info(
+            "Comparison agent completed successfully for startup idea: %s", startup
+        )
         return response_payload
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error while processing comparison request")
         raise HTTPException(
             status_code=500,
-            detail=f"An unexpected error occurred: {str(e)}",
-        )
+            detail="An unexpected error occurred while processing the comparison request.",
+        ) from None
+
+
+@app.post("/api/comparison-agent")
+def comparison_agent(payload: ComparisonRequest):
+    """Expose the comparison agent through the FastAPI endpoint.
+
+    Args:
+        payload: The incoming comparison request payload.
+
+    Returns:
+        dict: The comparison response generated by the agent.
+
+    Raises:
+        HTTPException: If the request is invalid or the comparison fails.
+    """
+    return run_comparison_agent(
+        payload.startupIdea, payload.description, payload.industry, payload.competitors
+    )
 
 
 if __name__ == "__main__":

@@ -1,31 +1,35 @@
-# Virtual Environment
+# Python virtual environment
+.venv/
 venv/
 
-# Environment Variables
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Environment files
 .env
 
-# VS Code Settings
+# IDE settings
+.idea/
 .vscode/
 
-# Python Cache
-__pycache__/
-*.pyc
-.env
-__pycache__/
-*.pyc
-# Compiled class file
-*.class
-
-# Log file
+# Logs
+logs/
 *.log
 
-# BlueJ files
-*.ctxt
+# Build artifacts
+build/
+dist/
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Package Files #
+# Compiled files
+*.class
+
+# Package archives
 *.jar
 *.war
 *.nar
@@ -34,6 +38,6 @@ __pycache__/
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# JVM crash logs
 hs_err_pid*
 replay_pid*
