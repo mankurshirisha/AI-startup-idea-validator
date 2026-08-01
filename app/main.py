@@ -66,16 +66,17 @@ def _build_market_opportunity_request(
             ]
 
     return MarketOpportunityRequest(
-        startupIdea=startup_idea,
-        industry=web_result.get("industry", ""),
-        targetCustomer=["Job Seekers"],
-        location="Global",
-        startupStage="Idea Stage",
-        marketAnalysis=MarketAnalysis(**market_analysis_payload),
-        customerAnalysis=CustomerAnalysis(**customer_analysis_payload),
-        analysisGoal="Startup Validation",
-        analysisDepth="Detailed",
-    )
+    startupIdea=startup_idea,
+    industry=web_result.get("industry", ""),
+    targetCustomer=["Job Seekers"],
+    location="Global",
+    startupStage="Idea Stage",
+    marketAnalysis=MarketAnalysis(**market_analysis_payload),
+    customerAnalysis=CustomerAnalysis(**customer_analysis_payload),
+    analysisGoal="Startup Validation",
+    analysisDepth="Detailed",
+    verifiedSources=web_result.get("verified_sources", []),
+)
 
 
 @app.get(

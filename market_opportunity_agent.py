@@ -35,6 +35,7 @@ class MarketOpportunityRequest(BaseModel):
     customerAnalysis: CustomerAnalysis
     analysisGoal: str
     analysisDepth: str
+    verifiedSources: List[str] = []
 
 
 # -----------------------------
@@ -94,11 +95,7 @@ def run_market_opportunity_agent(request: MarketOpportunityRequest):
             "Use digital marketing to reach target customers.",
             "Offer competitive pricing during the initial launch.",
         ],
-        "sources": [
-            "Industry Market Reports",
-            "Government Startup Statistics",
-            "Market Research Publications",
-        ],
+        "sources": request.verifiedSources,
     }
 
     logger.info("Market opportunity completed successfully")

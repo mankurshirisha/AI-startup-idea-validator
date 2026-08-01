@@ -136,19 +136,36 @@ Description:
 Verified Sources:
 {json.dumps(processed_sources, indent=2)}
 
-Analyze the startup idea and return ONLY valid JSON.
+Analyze the startup idea using ONLY the verified sources provided above.
+
+Return ONLY valid JSON in exactly the following format.
 
 {{
-    "market_size":"",
-    "industry":"",
-    "market_trends":[
-    ],
-    "real_competitors":[
-    ],
-    "confidence_score":"",
-    "verified_sources":[
-    ]
+    "market_size": "",
+    "growth_rate": "",
+    "industry": "",
+    "market_trends": [],
+    "real_competitors": [],
+    "confidence_score": 0,
+    "verified_sources": []
 }}
+
+Rules:
+1. Return ONLY valid JSON. Do not include markdown, explanations, or code fences.
+2. "confidence_score" MUST be an integer between 0 and 100.
+3. Do NOT include "%" or any text in confidence_score.
+4. Calculate confidence based on:
+   - Source credibility
+   - Agreement across multiple sources
+   - Data recency
+   - Completeness of available information
+5. "verified_sources" MUST contain only real URLs from the provided Verified Sources.
+6. Prioritize information supported by the verified sources.
+7. Include only real, existing competitors that are relevant to the startup idea. Prefer competitors supported by the verified sources whenever possible.
+8. Do NOT invent companies, sources, market statistics, or trends.
+9. Market trends should be concise, factual, and directly supported by the available evidence.
+10. Market size should include available figures and growth rates only if supported by the verified sources.
+11.Return the market CAGR or annual growth rate in the growth_rate field if it is available from the verified sources.
 """
 
     # ======================================================

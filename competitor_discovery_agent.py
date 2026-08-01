@@ -83,7 +83,7 @@ def _infer_competitor_website(competitor_name: str, search_results: list[dict]) 
 
 
 def _populate_competitor_websites(structured_output: dict, search_results: list[dict]) -> dict:
-    """Populate competitor websites using LLM output or search evidence."""
+    """Populate competitor websites and sources using search evidence."""
     competitors = structured_output.get("competitors") or []
     if not isinstance(competitors, list):
         return structured_output
@@ -92,17 +92,25 @@ def _populate_competitor_websites(structured_output: dict, search_results: list[
         if not isinstance(competitor, dict):
             continue
 
+        # ----------------------------
+        # Website
+        # ----------------------------
         website = competitor.get("website")
         normalized_website = _normalize_website(website)
+
         if normalized_website is not None:
             competitor["website"] = normalized_website
-            continue
+        else:
+            competitor["website"] = _infer_competitor_website(
+                competitor.get("name", ""),
+                search_results,
+            )
 
-        inferred_website = _infer_competitor_website(
-            competitor.get("name", ""),
-            search_results,
-        )
-        competitor["website"] = inferred_website
+        # ----------------------------
+        # Source
+        # ----------------------------
+        if not competitor.get("source"):
+            competitor["source"] = competitor["website"]
 
     return structured_output
 
@@ -225,7 +233,7 @@ def run_competitor_discovery_agent(
     # ==========================================================
 
     prompt = f"""
-You are a Competitor Discovery Agent.
+You are an expert Startup Competitor Discovery Agent.
 
 Startup Idea:
 {startup_idea}
@@ -236,10 +244,34 @@ Industry:
 Search Results:
 {json.dumps(processed_results, indent=2)}
 
-Identify the major competitors.
+Your task is to identify the DIRECT competitors of this startup idea.
+
+Focus on products or companies that solve the SAME problem for the SAME target customers.
+
+DO NOT return:
+- Enterprise HR platforms
+- Applicant Tracking Systems (ATS)
+- Recruitment CRMs
+- Talent sourcing platforms
+- Companies serving recruiters instead of end users
+
+Prefer competitors that are:
+- AI resume builders
+- Resume optimization tools
+- Career assistant platforms
+- Interview preparation platforms
+- Career development tools
+
+Prioritize competitors supported by the search results. If necessary, use your general knowledge to include well-known direct competitors, but do not invent companies.
 
 Return ONLY valid JSON.
-For each competitor, populate the website field with the official homepage URL if it is confidently known. If no reliable official website can be identified, set website to null.
+
+For each competitor:
+- website must contain the official homepage URL if confidently known.
+- If the official website is unknown, return null.
+- source should contain the URL of the supporting search result.
+
+Return this exact JSON schema:
 
 {{
     "startupIdea":"{startup_idea}",
