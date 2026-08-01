@@ -1,14 +1,20 @@
-import os
-import requests
 import json
+import os
+
+import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from app.gemini_client import generate_content
+from app.logging_config import get_logger
+
 load_dotenv()
 
+logger = get_logger(__name__)
+
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 app = FastAPI()
 
@@ -19,6 +25,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 class CompetitorRequest(BaseModel):
     startupIdea: str
     industryAnalysis: dict
@@ -27,43 +35,63 @@ class CompetitorRequest(BaseModel):
     marketOpportunityScore: int
     recommendations: list
 
-@app.post("/api/competitor-agent")
-def competitor_discovery_agent(payload: CompetitorRequest):
-    startup_idea = payload.startupIdea
-    industry = payload.industryAnalysis.get("industry", "")
-    customer_segments = payload.customerSegments
 
-    # ==========================================
-    # 1. INPUT VALIDATION
-    # ==========================================
+def run_competitor_discovery_agent(
+    startup_idea: str,
+    industry_analysis: dict,
+    customer_segments: list,
+    market_opportunity: dict,
+    market_opportunity_score: int,
+    recommendations: list,
+):
+    """Run the competitor discovery workflow.
+
+    Args:
+        startup_idea: The startup idea being analyzed.
+        industry_analysis: A dictionary containing the industry context.
+        customer_segments: A list of customer segments.
+        market_opportunity: A dictionary with market opportunity information.
+        market_opportunity_score: The numeric market opportunity score.
+        recommendations: A list of recommendations from prior analysis.
+
+    Returns:
+        dict: A structured competitor analysis payload.
+
+    Raises:
+        HTTPException: If the input is invalid or external search or Gemini analysis fails.
+    """
+
+    logger.info("Competitor discovery request received")
+
+    industry = industry_analysis.get("industry", "")
+
+    # ==========================================================
+    # INPUT VALIDATION
+    # ==========================================================
 
     if not startup_idea:
-        raise HTTPException(
-            status_code=400,
-            detail="Startup idea is required."
-        )
+        raise HTTPException(status_code=400, detail="Startup idea is required.")
 
     if not industry:
-        raise HTTPException(
-            status_code=400,
-            detail="Industry information is required."
-        )
-    # ==========================================
-    # 2. GENERATE COMPETITOR SEARCH QUERY
-    # ==========================================
+        raise HTTPException(status_code=400, detail="Industry information is required.")
+
+    # ==========================================================
+    # BUILD SEARCH QUERY
+    # ==========================================================
 
     search_queries = [
         f"Top competitors of {startup_idea}",
         f"Leading companies in {industry}",
         f"Best startups in {industry}",
         f"{startup_idea} alternatives",
-        f"Popular {industry} platforms"
+        f"Popular {industry} platforms",
     ]
 
     optimized_query = " OR ".join(search_queries)
-    # ==========================================
-    # 3. TAVILY SEARCH API
-    # ==========================================
+
+    # ==========================================================
+    # TAVILY SEARCH
+    # ==========================================================
 
     url = "https://api.tavily.com/search"
 
@@ -71,120 +99,149 @@ def competitor_discovery_agent(payload: CompetitorRequest):
         "api_key": TAVILY_API_KEY,
         "query": optimized_query,
         "search_depth": "advanced",
-        "include_domains": []
+        "include_domains": [],
     }
 
     try:
-        response = requests.post(url, json=tavily_payload)
+        logger.info("Starting Tavily competitor search request")
+        response = requests.post(
+            url,
+            json=tavily_payload,
+            timeout=60,
+        )
+
         response.raise_for_status()
+
         search_data = response.json()
+        logger.info("Tavily competitor search completed successfully")
 
     except Exception:
+        logger.exception("Tavily search failed while discovering competitors")
         raise HTTPException(
             status_code=500,
-            detail="Failed to retrieve competitor information."
-        )
-    # ==========================================
-    # 4. PROCESS SEARCH RESULTS
-    # ==========================================
+            detail="Unable to retrieve competitor data from the search service.",
+        ) from None
+
+    # ==========================================================
+    # PROCESS RESULTS
+    # ==========================================================
 
     seen_urls = set()
     processed_results = []
 
     for result in search_data.get("results", []):
-        url = result.get("url", "")
+
+        source_url = result.get("url", "")
         content = result.get("content", "")
 
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            processed_results.append({
-                "url": url,
-                "content": content
-            })
+        if source_url and source_url not in seen_urls:
+
+            seen_urls.add(source_url)
+
+            processed_results.append(
+                {
+                    "url": source_url,
+                    "content": content,
+                }
+            )
 
     if not processed_results:
-        raise HTTPException(
-            status_code=404,
-            detail="No competitor information found."
-        )
-    # ==========================================
-    # 5. OPENROUTER LLM PROCESSING
-    # ==========================================
 
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
+        raise HTTPException(status_code=404, detail="No competitor information found.")
 
-    body = {
-        "model": "openai/gpt-4o-mini",
-        "response_format": {
-            "type": "json_object"
-        },
-        "messages": [
-            {
-                "role": "user",
-                "content": f"""
-                You are a Competitor Discovery Agent.
+    # ==========================================================
+    # GEMINI
+    # ==========================================================
 
-                Startup Idea:
-                {startup_idea}
+    prompt = f"""
+You are a Competitor Discovery Agent.
 
-                Industry:
-                {industry}
+Startup Idea:
+{startup_idea}
 
-                Search Results:
-                {json.dumps(processed_results, indent=2)}
+Industry:
+{industry}
 
-                Identify the major competitors and return ONLY JSON.
+Search Results:
+{json.dumps(processed_results, indent=2)}
 
-                Return this format:
+Identify the major competitors.
 
-               {{
-                    "startupIdea": "{startup_idea}",
-                    "industry": "{industry}",
+Return ONLY valid JSON.
 
-                    "competitors":[
-                        {{
-                            "name":"",
-                            "website":"",
-                            "description":"",
-                            "key_features":[],
-                            "target_customers":"",
-                            "pricing":"",
-                            "source":""
-                  }}
-                    ]
+{{
+    "startupIdea":"{startup_idea}",
+    "industry":"{industry}",
+    "competitors":[
+        {{
+            "name":"",
+            "website":"",
+            "description":"",
+            "key_features":[],
+            "target_customers":"",
+            "pricing":"",
+            "source":""
+        }}
+    ]
 }}
-                """
-            }
-        ]
-    }
+"""
+
     try:
-        openrouter_response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=body
-        )
-
-        openrouter_response.raise_for_status()
-
-        raw_choice = openrouter_response.json()["choices"][0]["message"]["content"]
-
+        logger.info("Starting Gemini competitor analysis request")
+        raw_choice = generate_content(prompt)
         structured_output = json.loads(raw_choice)
-
+        logger.info("Competitor discovery completed successfully")
         return structured_output
 
     except Exception:
+        logger.exception("Gemini competitor analysis failed")
         raise HTTPException(
             status_code=500,
-            detail="Competitor discovery failed."
-        )
+            detail="Unable to generate competitor analysis from the AI service.",
+        ) from None
+
+
+@app.get("/")
+def home():
+    """Return a basic health message for the competitor discovery agent.
+
+    Returns:
+        dict: A simple status message.
+    """
+
+    return {"message": "Competitor Discovery Agent Running"}
+
+
+@app.post("/api/competitor-agent")
+def competitor_discovery_agent(payload: CompetitorRequest):
+    """Expose the competitor discovery agent through the FastAPI endpoint.
+
+    Args:
+        payload: The incoming competitor discovery request payload.
+
+    Returns:
+        dict: The competitor analysis payload generated by the agent.
+
+    Raises:
+        HTTPException: If the input is invalid or the analysis fails.
+    """
+
+    return run_competitor_discovery_agent(
+        payload.startupIdea,
+        payload.industryAnalysis,
+        payload.customerSegments,
+        payload.marketOpportunity,
+        payload.marketOpportunityScore,
+        payload.recommendations,
+    )
+
+
 if __name__ == "__main__":
+
     import uvicorn
 
     uvicorn.run(
         app,
         host="127.0.0.1",
-        port=8901
+        port=8901,
     )
