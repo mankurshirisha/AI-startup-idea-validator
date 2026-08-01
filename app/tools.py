@@ -1,10 +1,17 @@
 from crewai.tools import tool
 
-from comparison_agent import run_comparison_agent
-from competitor_discovery_agent import run_competitor_discovery_agent
-from market_opportunity_agent import (MarketOpportunityRequest,
-                                      run_market_opportunity_agent)
-from web_search_agent import run_web_search_agent
+try:
+    from comparison_agent import run_comparison_agent
+    from competitor_discovery_agent import run_competitor_discovery_agent
+    from market_opportunity_agent import (MarketOpportunityRequest,
+                                          run_market_opportunity_agent)
+    from web_search_agent import run_web_search_agent
+except ImportError:  # pragma: no cover - package import fallback
+    from ..comparison_agent import run_comparison_agent
+    from ..competitor_discovery_agent import run_competitor_discovery_agent
+    from ..market_opportunity_agent import (MarketOpportunityRequest,
+                                            run_market_opportunity_agent)
+    from ..web_search_agent import run_web_search_agent
 
 # ==========================================================
 # WEB SEARCH TOOL
