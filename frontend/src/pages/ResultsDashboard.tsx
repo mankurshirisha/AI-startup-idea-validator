@@ -143,10 +143,15 @@ export default function ResultsDashboard() {
    * Override the placeholder idea with the real user input so the header
    * shows what they actually typed — before full backend integration.
    */
-  const state = location.state as { idea?: string; description?: string } | null
-  const data: ValidationResult = {
+  const state = location.state as {
+    data?: ValidationResult
+    idea?: string
+    description?: string
+  } | null
+
+  const data: ValidationResult = state?.data ?? {
     ...PLACEHOLDER_DATA,
-    ...(state?.idea        ? { idea: state.idea }               : {}),
+    ...(state?.idea ? { idea: state.idea } : {}),
     ...(state?.description ? { description: state.description } : {}),
   }
 
@@ -189,7 +194,7 @@ export default function ResultsDashboard() {
           <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />
 
           {/* 2 — Multi-Agent Pipeline */}
-          <AgentPipeline agents={data.agents} />
+          <AgentPipeline agents={data.agents} data={data} />
 
           {/* Section divider */}
           <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />

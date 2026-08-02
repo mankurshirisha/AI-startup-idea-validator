@@ -14,8 +14,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react'
 import { BarLoader } from '@/components/ui/BarLoader'
+import { validateStartupIdea } from '@/lib/validationService'
+import type { ValidationResult } from '@/types/dashboard'
 
 /* ─── Design tokens — must stay in sync with index.css ─── */
 const C = {
@@ -53,31 +55,31 @@ const AGENTS: Agent[] = [
     id: 'web-search',
     label: 'Web Search Agent',
     description: 'Fetching live data from trusted market sources',
-    duration: 5200,
+    duration: 3500,
   },
   {
     id: 'market-opp',
     label: 'Market Opportunity Agent',
     description: 'Sizing the addressable market and growth trajectory',
-    duration: 5800,
+    duration: 4000,
   },
   {
     id: 'competitor',
     label: 'Competitor Discovery Agent',
     description: 'Mapping competitive landscape and positioning gaps',
-    duration: 5400,
+    duration: 4000,
   },
   {
     id: 'comparison',
     label: 'Comparison Agent',
     description: 'Benchmarking against industry benchmarks and alternatives',
-    duration: 4600,
+    duration: 3500,
   },
   {
     id: 'report',
     label: 'Report Generator',
     description: 'Compiling executive summary and actionable insights',
-    duration: 4000,
+    duration: 3000,
   },
 ]
 
@@ -159,8 +161,10 @@ export default function LoadingPage() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Idea context passed from the landing page form (via state or query)
-  const idea = (location.state as { idea?: string })?.idea ?? 'Your Startup Idea'
+  // Idea context passed from the landing page form (via state)
+  const locState = location.state as { idea?: string; description?: string } | null
+  const idea = locState?.idea ?? 'Your Startup Idea'
+  const description = locState?.description ?? ''
 
   /* ── Agent pipeline progress ── */
   const [activeAgentIdx, setActiveAgentIdx] = useState(0)
@@ -168,13 +172,38 @@ export default function LoadingPage() {
   const [allDone, setAllDone] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
 
+  /* ── Backend Integration State ── */
+  const [apiResult, setApiResult] = useState<ValidationResult | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [isRetrying, setIsRetrying] = useState(0)
+
   /* ── Rotating status message ── */
   const [msgIdx, setMsgIdx] = useState(0)
   const [msgVisible, setMsgVisible] = useState(true)
 
-  /* ── Run agent pipeline on mount ── */
   const pipelineRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /* ── Trigger Backend Validation ── */
+  useEffect(() => {
+    let active = true
+    setErrorMsg(null)
+
+    validateStartupIdea({ startupIdea: idea, description })
+      .then((result) => {
+        if (!active) return
+        setApiResult(result)
+      })
+      .catch((err) => {
+        if (!active) return
+        setErrorMsg(err.message || 'Validation service failed. Please try again.')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [idea, description, isRetrying])
+
+  /* ── Run visual agent pipeline progress ── */
   useEffect(() => {
     let cancelled = false
     let idx = 0
@@ -191,10 +220,10 @@ export default function LoadingPage() {
           setActiveAgentIdx(idx)
           runNext()
         } else {
-          // All agents done
-          setTimeout(() => {
-            if (!cancelled) setAllDone(true)
-          }, 600)
+          // Visual pipeline complete
+          if (!cancelled) {
+            setAllDone(true)
+          }
         }
       }, agent.duration)
     }
@@ -204,7 +233,7 @@ export default function LoadingPage() {
       cancelled = true
       if (pipelineRef.current) clearTimeout(pipelineRef.current)
     }
-  }, [])
+  }, [isRetrying])
 
   /* ── Rotate status message every 3.5s ── */
   useEffect(() => {
@@ -218,19 +247,30 @@ export default function LoadingPage() {
     return () => clearInterval(rotate)
   }, [])
 
-  /* ── Navigate to results once allDone + brief pause ── */
+  /* ── Navigate to results once allDone AND apiResult ready ── */
   useEffect(() => {
+    if (errorMsg) return
     if (!allDone) return
+
+    // If visual pipeline finished but API is still processing, mark all agents complete once API responds
+    if (!apiResult) return
+
     setTransitioning(true)
     const t = setTimeout(() => {
-      navigate('/results', { state: location.state })
-    }, 2400)
+      navigate('/results', {
+        state: {
+          data: apiResult,
+          idea,
+          description,
+        },
+      })
+    }, 1800)
     return () => clearTimeout(t)
-  }, [allDone, navigate, location.state])
+  }, [allDone, apiResult, errorMsg, navigate, idea, description])
 
   /* ── Determine status of each agent ── */
   const getStatus = (idx: number): AgentStatus => {
-    if (completedAgents.has(idx)) return 'done'
+    if (completedAgents.has(idx) || allDone) return 'done'
     if (idx === activeAgentIdx && !completedAgents.has(idx)) return 'running'
     return 'waiting'
   }
@@ -356,6 +396,111 @@ export default function LoadingPage() {
             </span>
           </motion.div>
 
+          {/* ── Error Notification Card ── */}
+          {errorMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                width: '100%',
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #fee2e2',
+                borderRadius: '20px',
+                padding: '28px',
+                boxShadow: '0 8px 30px rgba(239,68,68,0.08)',
+                marginBottom: '36px',
+                textAlign: 'center',
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+            >
+              <div
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '14px',
+                  background: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                }}
+              >
+                <AlertTriangle size={24} color="#dc2626" strokeWidth={2} />
+              </div>
+              <h3
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 800,
+                  color: C.primary,
+                  marginBottom: '8px',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Validation Encountered an Issue
+              </h3>
+              <p
+                style={{
+                  fontSize: '14px',
+                  color: C.secondary,
+                  lineHeight: '1.6',
+                  marginBottom: '24px',
+                  maxWidth: '440px',
+                  margin: '0 auto 24px',
+                }}
+              >
+                {errorMsg}
+              </p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    setErrorMsg(null)
+                    setAllDone(false)
+                    setCompletedAgents(new Set())
+                    setActiveAgentIdx(0)
+                    setIsRetrying((prev) => prev + 1)
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '11px 22px',
+                    backgroundColor: C.accent,
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}
+                >
+                  <RotateCcw size={15} strokeWidth={2.2} />
+                  Retry Validation
+                </button>
+                <button
+                  onClick={() => navigate('/')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '11px 22px',
+                    backgroundColor: 'transparent',
+                    color: C.primary,
+                    border: `1.5px solid ${C.border}`,
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}
+                >
+                  <ArrowLeft size={15} strokeWidth={2.2} />
+                  Back to Home
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* ── Main heading ── */}
           <motion.h1
             {...fadeUp(0.1)}
@@ -370,7 +515,9 @@ export default function LoadingPage() {
               marginBottom: '16px',
             }}
           >
-            {allDone ? (
+            {errorMsg ? (
+              <span style={{ color: '#dc2626' }}>Validation Interrupted</span>
+            ) : allDone ? (
               <span style={{ color: C.accent }}>✓ Validation Complete</span>
             ) : (
               'Validating Your Startup'
