@@ -1,0 +1,250 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════
+   DESIGN TOKENS — BeforeBeta SaaS (Reference-matched)
+═══════════════════════════════════════════════════════ */
+:root {
+  --bg:            #FFFFFF;
+  --surface:       #FFFFFF;
+  --primary:       #1a1a2e;        /* deep navy — headings */
+  --secondary:     #4a4a6a;        /* muted body text */
+  --accent:        #3b3bdb;        /* vivid indigo / royal blue — CTA */
+  --accent-dark:   #2828b8;        /* hover state */
+  --wave:          #3b3bdb;        /* solid wave shape — no gradient */
+  --border:        #e8e8f0;
+  --card-shadow:   0 4px 24px rgba(59, 59, 219, 0.08), 0 1px 4px rgba(0,0,0,0.06);
+}
+
+/* ═══════════════════════════════════════════════════════
+   GLOBAL RESET & BASE
+═══════════════════════════════════════════════════════ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: 'DM Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+  background-color: #FFFFFF !important;
+}
+
+body {
+  background-color: #FFFFFF !important;
+  color: var(--primary);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  background-color: #FFFFFF !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TYPOGRAPHY — DM Sans bold headings matching reference
+═══════════════════════════════════════════════════════ */
+h1, h2, h3, h4 {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--primary);
+}
+
+p, a, span, li {
+  font-family: 'DM Sans', 'Inter', sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════
+   HERO GRID — 55/45 left-right split (text / illustration)
+═══════════════════════════════════════════════════════ */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 48px;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+@media (min-width: 1024px) {
+  .hero-grid {
+    grid-template-columns: 1.1fr 1fr;
+    gap: clamp(48px, 5vw, 80px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   FLOATING CARDS — match reference exactly
+   White, rounded, soft shadow, thin border
+═══════════════════════════════════════════════════════ */
+.float-card {
+  background: #ffffff;
+  border: 1px solid #e4e4f0;
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  backdrop-filter: blur(8px);
+}
+
+.float-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #3b3bdb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.float-card-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9090b0;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.float-card-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1a1a2e;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.float-card-value.indigo {
+  color: #3b3bdb;
+}
+
+/* ═══════════════════════════════════════════════════════
+   NAV BUTTON — rounded white (reference style)
+═══════════════════════════════════════════════════════ */
+.nav-cta {
+  background: #3b3bdb;
+  color: #ffffff;
+  border: none;
+  border-radius: 100px;
+  padding: 10px 22px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.nav-cta:hover {
+  background: #2828b8;
+  transform: translateY(-1px);
+}
+
+/* ═══════════════════════════════════════════════════════
+   CTA BUTTON — dark blue, rounded corners, white text
+═══════════════════════════════════════════════════════ */
+.btn-primary {
+  background: #3b3bdb;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 15px 32px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.btn-primary:hover {
+  background: #2828b8;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 59, 219, 0.35);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--primary);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 28px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 0.2s ease, transform 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-secondary:hover {
+  border-color: #3b3bdb;
+  color: #3b3bdb;
+  transform: translateY(-1px);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FLOATING ANIMATION — gentle vertical oscillation
+═══════════════════════════════════════════════════════ */
+@keyframes floatUp {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-5px) rotate(0.5deg); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   FOCUS & SCROLLBAR
+═══════════════════════════════════════════════════════ */
+:focus-visible {
+  outline: 2px solid #3b3bdb;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d0d0e8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b0d0; }
+
+/* ═══════════════════════════════════════════════════════
+   FORM ELEMENTS
+═══════════════════════════════════════════════════════ */
+input, textarea, button { font-family: inherit; }
+textarea { resize: vertical; }
+
+::selection {
+  background-color: rgba(59, 59, 219, 0.15);
+  color: #1a1a2e;
+}

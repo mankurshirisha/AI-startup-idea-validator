@@ -38,6 +38,13 @@ htmlcov/
 *.tar.gz
 *.rar
 
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
 # JVM crash logs
 hs_err_pid*
 replay_pid*
+
