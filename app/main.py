@@ -1,5 +1,10 @@
+import asyncio
+import concurrent.futures
+import json
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.logging_config import get_logger
 from app.models import StartupRequest
@@ -37,7 +42,7 @@ app.add_middleware(
 
 
 def _build_market_opportunity_request(
-    startup_idea: str, web_result: dict
+    request: StartupRequest, web_result: dict
 ) -> MarketOpportunityRequest:
     market_analysis_payload = {}
     for field_name in MarketAnalysis.model_fields:
@@ -51,32 +56,33 @@ def _build_market_opportunity_request(
             market_analysis_payload[field_name] = web_result.get("market_trends", [])
 
     customer_analysis_payload = {}
+    target_cust_list = [request.targetCustomer] if request.targetCustomer else ["General Consumers"]
     for field_name in CustomerAnalysis.model_fields:
         if field_name == "customerSegments":
-            customer_analysis_payload[field_name] = [
-                "Students",
-                "Job Seekers",
-                "Professionals",
-            ]
+            customer_analysis_payload[field_name] = target_cust_list
         elif field_name == "customerPainPoints":
             customer_analysis_payload[field_name] = [
-                "Limited market visibility",
-                "Need for clear differentiation",
-                "Need for faster validation",
+                f"Needs tailored solution for {request.targetCustomer or 'users'}",
+                "Efficiency and product-market fit",
             ]
 
+    ind = request.industry if request.industry else web_result.get("industry", "Technology")
+
     return MarketOpportunityRequest(
-    startupIdea=startup_idea,
-    industry=web_result.get("industry", ""),
-    targetCustomer=["Job Seekers"],
-    location="Global",
-    startupStage="Idea Stage",
-    marketAnalysis=MarketAnalysis(**market_analysis_payload),
-    customerAnalysis=CustomerAnalysis(**customer_analysis_payload),
-    analysisGoal="Startup Validation",
-    analysisDepth="Detailed",
-    verifiedSources=web_result.get("verified_sources", []),
-)
+        startupIdea=request.startupIdea,
+        description=request.description or "",
+        industry=ind,
+        targetCustomer=target_cust_list,
+        location=request.targetCountry or "Global",
+        startupStage=request.startupStage or "Idea",
+        businessModel=request.businessModel or "B2B",
+        keyFeatures=request.keyFeatures or [],
+        marketAnalysis=MarketAnalysis(**market_analysis_payload),
+        customerAnalysis=CustomerAnalysis(**customer_analysis_payload),
+        analysisGoal="Startup Validation",
+        analysisDepth="Detailed",
+        verifiedSources=web_result.get("verified_sources", []),
+    )
 
 
 @app.get(
@@ -84,180 +90,79 @@ def _build_market_opportunity_request(
     summary="Health check",
     description="Returns a simple message confirming that the API service is running.",
     response_description="Service status message",
-    responses={
-        200: {
-            "description": "Service is running",
-            "content": {
-                "application/json": {
-                    "example": {"message": "AI Startup Idea Validator Running!"}
-                }
-            },
-        }
-    },
 )
 def home():
-    """Return a simple availability message.
-
-    Returns:
-        dict: A JSON response indicating that the API is running.
-    """
     return {"message": "AI Startup Idea Validator Running!"}
 
 
 # ==========================================================
-# COMPLETE STARTUP VALIDATION PIPELINE
+# COMPLETE STARTUP VALIDATION PIPELINE (OPTIMIZED PARALLEL)
 # ==========================================================
 
 
 @app.post(
     "/api/startup-validator",
     summary="Run the full startup validation pipeline",
-    description="Runs the complete startup validation workflow across web search, market opportunity, competitor discovery, and comparison analysis.",
+    description="Runs the complete startup validation workflow with parallel market opportunity and competitor discovery execution.",
     response_description="Combined validation results from all analysis stages",
-    responses={
-        200: {
-            "description": "Validation completed successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "status": "success",
-                        "web_search": {
-                            "market_size": "",
-                            "industry": "",
-                            "market_trends": [],
-                            "real_competitors": [],
-                            "confidence_score": "",
-                            "verified_sources": [],
-                        },
-                        "market_opportunity": {
-                            "startupIdea": "AI Resume Builder",
-                            "industryInsights": {
-                                "industry": "",
-                                "marketSize": "",
-                                "growthRate": "",
-                                "trends": [],
-                            },
-                            "marketOpportunity": {
-                                "TAM": "$50 Billion",
-                                "SAM": "$8 Billion",
-                                "SOM": "$500 Million",
-                            },
-                            "marketOpportunityScore": 91,
-                            "customerInsights": {
-                                "targetSegments": [],
-                                "keyPainPoints": [],
-                                "marketDemand": "High",
-                            },
-                            "recommendations": [],
-                            "sources": [],
-                        },
-                        "competitor_analysis": {},
-                        "comparison": {
-                            "status": "success",
-                            "startup": "AI Resume Builder",
-                            "description": "An AI platform that helps job seekers create tailored resumes and prepare for interviews.",
-                            "industry": "",
-                            "startup_features": [],
-                            "comparison": [],
-                            "similarity_scores": [],
-                            "market_gaps": [],
-                            "business_insights": {
-                                "strengths": [],
-                                "weaknesses": [],
-                                "opportunities": [],
-                                "recommendations": [],
-                            },
-                        },
-                    }
-                }
-            },
-        },
-        400: {"description": "Invalid request payload"},
-        500: {"description": "Internal processing error"},
-    },
 )
 def validate(request: StartupRequest):
-    """Run the end-to-end startup validation workflow.
+    logger.info("Startup validation request received for idea: %s", request.startupIdea)
 
-    Args:
-        request: The startup idea request payload containing the idea and description.
-
-    Returns:
-        dict: A dictionary containing the web search, market opportunity,
-            competitor analysis, and comparison results.
-
-    Raises:
-        HTTPException: If the request payload is invalid or any downstream step fails.
-    """
-    logger.info("Startup validation request received")
-
-    # ======================================================
+    # ──────────────────────────────────────────────────────
     # STEP 1 - WEB SEARCH
-    # ======================================================
-
+    # ──────────────────────────────────────────────────────
     logger.info("Starting web search step")
     web_result = run_web_search_agent(
-        request.startupIdea,
-        request.description,
+        idea=request.startupIdea,
+        description=request.description,
+        industry=request.industry or "",
+        target_customer=request.targetCustomer or "",
+        target_country=request.targetCountry or "Global",
+        startup_stage=request.startupStage or "Idea",
+        business_model=request.businessModel or "B2B",
+        key_features=request.keyFeatures or [],
     )
 
-    # ======================================================
-    # STEP 2 - MARKET OPPORTUNITY
-    # ======================================================
+    # ──────────────────────────────────────────────────────
+    # STEP 2 & STEP 3 - PARALLEL EXECUTION (Market Opp & Competitors)
+    # ──────────────────────────────────────────────────────
+    market_request = _build_market_opportunity_request(request, web_result)
+    logger.info("Starting parallel execution for Market Opportunity & Competitor Discovery")
 
-    market_request = _build_market_opportunity_request(
-        request.startupIdea,
-        web_result,
-    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_market = executor.submit(run_market_opportunity_agent, market_request)
+        future_competitor = executor.submit(
+            run_competitor_discovery_agent,
+            startup_idea=request.startupIdea,
+            industry_analysis={"industry": request.industry or web_result.get("industry", "")},
+            customer_segments=[request.targetCustomer] if request.targetCustomer else ["General Users"],
+            market_opportunity={},
+            market_opportunity_score=0,
+            recommendations=[],
+            location=request.targetCountry or "Global",
+            business_model=request.businessModel or "B2B",
+            target_customer=request.targetCustomer or "",
+            key_features=request.keyFeatures or [],
+        )
 
-    logger.info("Starting market opportunity step")
-    market_result = run_market_opportunity_agent(market_request)
+        market_result = future_market.result()
+        competitor_result = future_competitor.result()
 
-    # ======================================================
-    # STEP 3 - COMPETITOR DISCOVERY
-    # ======================================================
-
-    logger.info("Starting competitor discovery step")
-    competitor_result = run_competitor_discovery_agent(
-        startup_idea=request.startupIdea,
-        industry_analysis={"industry": web_result.get("industry", "")},
-        customer_segments=[
-            "Students",
-            "Job Seekers",
-            "Professionals",
-        ],
-        market_opportunity=market_result.get(
-            "marketOpportunity",
-            {},
-        ),
-        market_opportunity_score=market_result.get(
-            "marketOpportunityScore",
-            0,
-        ),
-        recommendations=market_result.get(
-            "recommendations",
-            [],
-        ),
-    )
-
-    # ======================================================
+    # ──────────────────────────────────────────────────────
     # STEP 4 - COMPARISON
-    # ======================================================
-
+    # ──────────────────────────────────────────────────────
     logger.info("Starting comparison step")
     comparison_result = run_comparison_agent(
         startup_idea=request.startupIdea,
         description=request.description,
-        industry=web_result.get("industry", ""),
-        competitors=competitor_result.get(
-            "competitors",
-            [],
-        ),
+        industry=request.industry or web_result.get("industry", ""),
+        competitors=competitor_result.get("competitors", []),
+        location=request.targetCountry or "Global",
+        business_model=request.businessModel or "B2B",
+        target_customer=request.targetCustomer or "",
+        key_features=request.keyFeatures or [],
     )
-
-    # ======================================================
-    # FINAL RESPONSE
-    # ======================================================
 
     return {
         "status": "success",
@@ -269,146 +174,134 @@ def validate(request: StartupRequest):
 
 
 # ==========================================================
-# INDIVIDUAL AGENT ENDPOINTS
+# SSE STREAMING PIPELINE (OPTIMIZED PARALLEL STREAMING)
 # ==========================================================
 
 
 @app.post(
-    "/api/search-agent",
-    summary="Run the web search agent",
-    description="Performs the web search analysis step and returns structured market research information.",
-    response_description="Structured market research payload",
-    responses={
-        200: {
-            "description": "Web search analysis completed",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "market_size": "",
-                        "industry": "",
-                        "market_trends": [],
-                        "real_competitors": [],
-                        "confidence_score": "",
-                        "verified_sources": [],
-                    }
-                }
-            },
-        },
-        400: {"description": "Invalid search request"},
-        500: {"description": "Search processing error"},
-    },
+    "/api/startup-validator-stream",
+    summary="Stream real-time pipeline progress",
+    description="Runs the full validation pipeline with parallel execution for Stage 2 & 3, streaming SSE events for each stage.",
+    response_description="text/event-stream of stage progress and final result",
 )
-def search_agent(request: IdeaRequest):
-    """Run the web search analysis agent.
+def validate_stream(request: StartupRequest):
+    def _generate():
+        try:
+            # ──────────────────────────────────────────────────
+            # STAGE 1 — Web Search
+            # ──────────────────────────────────────────────────
+            yield f"data: {json.dumps({'stage': 'web_search', 'status': 'running'})}\n\n"
+            web_result = run_web_search_agent(
+                idea=request.startupIdea,
+                description=request.description,
+                industry=request.industry or "",
+                target_customer=request.targetCustomer or "",
+                target_country=request.targetCountry or "Global",
+                startup_stage=request.startupStage or "Idea",
+                business_model=request.businessModel or "B2B",
+                key_features=request.keyFeatures or [],
+            )
+            yield f"data: {json.dumps({'stage': 'web_search', 'status': 'done'})}\n\n"
 
-    Args:
-        request: The search request containing the startup idea and description.
+            # ──────────────────────────────────────────────────
+            # STAGE 2 & STAGE 3 — PARALLEL EXECUTION
+            # ──────────────────────────────────────────────────
+            yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'running'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'competitor', 'status': 'running'})}\n\n"
 
-    Returns:
-        dict: The market research payload produced by the web search agent.
+            market_request = _build_market_opportunity_request(request, web_result)
 
-    Raises:
-        HTTPException: If the input is invalid or the search analysis fails.
-    """
-    return run_web_search_agent(
-        request.idea,
-        request.description,
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_market = executor.submit(run_market_opportunity_agent, market_request)
+                future_competitor = executor.submit(
+                    run_competitor_discovery_agent,
+                    startup_idea=request.startupIdea,
+                    industry_analysis={"industry": request.industry or web_result.get("industry", "")},
+                    customer_segments=[request.targetCustomer] if request.targetCustomer else ["General Users"],
+                    market_opportunity={},
+                    market_opportunity_score=0,
+                    recommendations=[],
+                    location=request.targetCountry or "Global",
+                    business_model=request.businessModel or "B2B",
+                    target_customer=request.targetCustomer or "",
+                    key_features=request.keyFeatures or [],
+                )
+
+                # Wait for both parallel agents to complete
+                market_result = future_market.result()
+                yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
+
+                competitor_result = future_competitor.result()
+                yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
+
+            # ──────────────────────────────────────────────────
+            # STAGE 4 — Comparison Agent
+            # ──────────────────────────────────────────────────
+            yield f"data: {json.dumps({'stage': 'comparison', 'status': 'running'})}\n\n"
+            comparison_result = run_comparison_agent(
+                startup_idea=request.startupIdea,
+                description=request.description,
+                industry=request.industry or web_result.get("industry", ""),
+                competitors=competitor_result.get("competitors", []),
+                location=request.targetCountry or "Global",
+                business_model=request.businessModel or "B2B",
+                target_customer=request.targetCustomer or "",
+                key_features=request.keyFeatures or [],
+            )
+            yield f"data: {json.dumps({'stage': 'comparison', 'status': 'done'})}\n\n"
+
+            # All stages complete — emit full result payload
+            full_result = {
+                "status": "success",
+                "web_search": web_result,
+                "market_opportunity": market_result,
+                "competitor_analysis": competitor_result,
+                "comparison": comparison_result,
+            }
+
+            yield f"data: {json.dumps({'stage': 'done', 'result': full_result})}\n\n"
+
+        except Exception as exc:
+            logger.exception("SSE validation pipeline error")
+            yield f"data: {json.dumps({'stage': 'error', 'detail': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 
-@app.post(
-    "/api/market-opportunity-agent",
-    summary="Run the market opportunity agent",
-    description="Returns a market opportunity summary based on the provided startup and market context.",
-    response_description="Market opportunity analysis response",
-    responses={
-        200: {
-            "description": "Market opportunity analysis completed",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "startupIdea": "AI Resume Builder",
-                        "industryInsights": {
-                            "industry": "",
-                            "marketSize": "",
-                            "growthRate": "",
-                            "trends": [],
-                        },
-                        "marketOpportunity": {
-                            "TAM": "$50 Billion",
-                            "SAM": "$8 Billion",
-                            "SOM": "$500 Million",
-                        },
-                        "marketOpportunityScore": 91,
-                        "customerInsights": {
-                            "targetSegments": [],
-                            "keyPainPoints": [],
-                            "marketDemand": "High",
-                        },
-                        "recommendations": [],
-                        "sources": [],
-                    }
-                }
-            },
-        }
-    },
-)
+# ==========================================================
+# INDIVIDUAL AGENT ENDPOINTS
+# ==========================================================
+
+
+@app.post("/api/search-agent")
+def search_agent(request: IdeaRequest):
+    return run_web_search_agent(
+        idea=request.idea,
+        description=request.description,
+        industry=request.industry,
+        target_customer=request.targetCustomer,
+        target_country=request.targetCountry,
+        startup_stage=request.startupStage,
+        business_model=request.businessModel,
+        key_features=request.keyFeatures,
+    )
+
+
+@app.post("/api/market-opportunity-agent")
 def market_opportunity_agent(request: MarketOpportunityRequest):
-    """Run the market opportunity summarization agent.
-
-    Args:
-        request: The market opportunity request payload.
-
-    Returns:
-        dict: A structured market opportunity analysis response.
-    """
     return run_market_opportunity_agent(request)
 
 
-@app.post(
-    "/api/competitor-agent",
-    summary="Run the competitor discovery agent",
-    description="Finds and structures competitor information for the supplied startup and industry context.",
-    response_description="Competitor discovery analysis response",
-    responses={
-        200: {
-            "description": "Competitor discovery completed",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "startupIdea": "AI Resume Builder",
-                        "industry": "",
-                        "competitors": [
-                            {
-                                "name": "",
-                                "website": "",
-                                "description": "",
-                                "key_features": [],
-                                "target_customers": "",
-                                "pricing": "",
-                                "source": "",
-                            }
-                        ],
-                    }
-                }
-            },
-        },
-        404: {"description": "No competitor information found"},
-        500: {"description": "Competitor processing error"},
-    },
-)
+@app.post("/api/competitor-agent")
 def competitor_agent(request: CompetitorRequest):
-    """Run the competitor discovery analysis agent.
-
-    Args:
-        request: The competitor discovery request payload.
-
-    Returns:
-        dict: The competitor analysis payload returned by the agent.
-
-    Raises:
-        HTTPException: If the request is invalid or no competitor data can be found.
-    """
     return run_competitor_discovery_agent(
         request.startupIdea,
         request.industryAnalysis,
@@ -416,68 +309,28 @@ def competitor_agent(request: CompetitorRequest):
         request.marketOpportunity,
         request.marketOpportunityScore,
         request.recommendations,
+        location=request.location,
+        business_model=request.businessModel,
+        target_customer=request.targetCustomer,
+        key_features=request.keyFeatures,
     )
 
 
-@app.post(
-    "/api/comparison-agent",
-    summary="Run the comparison agent",
-    description="Compares the startup against competitors and returns structured business insights and recommendations.",
-    response_description="Comparison and insight response",
-    responses={
-        200: {
-            "description": "Comparison completed successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "status": "success",
-                        "startup": "AI Resume Builder",
-                        "description": "An AI platform that helps job seekers create tailored resumes and prepare for interviews.",
-                        "industry": "",
-                        "startup_features": [],
-                        "comparison": [],
-                        "similarity_scores": [],
-                        "market_gaps": [],
-                        "business_insights": {
-                            "strengths": [],
-                            "weaknesses": [],
-                            "opportunities": [],
-                            "recommendations": [],
-                        },
-                    }
-                }
-            },
-        },
-        400: {"description": "Invalid comparison request"},
-        500: {"description": "Comparison processing error"},
-    },
-)
+@app.post("/api/comparison-agent")
 def comparison_agent(request: ComparisonRequest):
-    """Run the final comparison and insight generation agent.
-
-    Args:
-        request: The comparison request payload containing the startup and competitors.
-
-    Returns:
-        dict: A structured comparison response with business insights.
-
-    Raises:
-        HTTPException: If the request is invalid or the comparison workflow fails.
-    """
     return run_comparison_agent(
         request.startupIdea,
         request.description,
         request.industry,
         request.competitors,
+        location=request.location,
+        business_model=request.businessModel,
+        target_customer=request.targetCustomer,
+        key_features=request.keyFeatures,
     )
 
 
 if __name__ == "__main__":
-
     import uvicorn
 
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=8000,
-    )
+    uvicorn.run(app, host="127.0.0.1", port=8000)

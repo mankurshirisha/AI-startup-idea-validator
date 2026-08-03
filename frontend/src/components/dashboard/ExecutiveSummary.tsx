@@ -1,39 +1,68 @@
 /**
  * ExecutiveSummary.tsx
- * Section 1 — Validation score ring + status badge + summary paragraph.
+ * Hero Section — Executive Summary Banner with Score Gauge, Verdict Badge,
+ * Verdict Rationale Explanation, & Metadata Badges.
+ * Zero emojis.
  */
 import { motion } from 'framer-motion'
 import type { ValidationResult } from '@/types/dashboard'
 import { C, FONT, RADIUS, fadeUp } from './tokens'
+import { Badge } from './Badge'
+import type { BadgeVariant } from './Badge'
+import { Sparkles, ShieldCheck, AlertCircle, MapPin, Building2, Rocket, Tag, Info } from 'lucide-react'
 
 interface Props {
-  data: Pick<ValidationResult, 'validationScore' | 'status' | 'executiveSummary'>
+  data: ValidationResult
 }
 
-/* ── Status badge colors ── */
-const STATUS_STYLE: Record<ValidationResult['status'], { bg: string; color: string }> = {
-  Strong:      { bg: '#dcfce7', color: '#16a34a' },
-  Moderate:    { bg: '#dbeafe', color: C.accent    },
-  'Needs Work':{ bg: '#fff7ed', color: '#ea580c' },
-  Weak:        { bg: '#fee2e2', color: '#dc2626' },
+function getVerdictBadgeConfig(score: number, verdict?: string): { title: string; variant: BadgeVariant; icon: any } {
+  if (score >= 85 || verdict === 'Excellent Opportunity') {
+    return { title: 'Excellent Opportunity', variant: 'success', icon: ShieldCheck }
+  }
+  if (score >= 70 || verdict === 'Promising but Competitive') {
+    return { title: 'Promising but Competitive', variant: 'primary', icon: Sparkles }
+  }
+  if (score >= 50 || verdict === 'Needs Refinement') {
+    return { title: 'Needs Refinement', variant: 'warning', icon: AlertCircle }
+  }
+  return { title: 'High Risk', variant: 'danger', icon: AlertCircle }
 }
 
-/* ── SVG score ring ── */
-function ScoreRing({ score, color }: { score: number; color: string }) {
-  const R = 44
+function getRingColor(score: number): string {
+  if (score >= 85) return '#16a34a'
+  if (score >= 70) return C.accent
+  if (score >= 50) return '#b45309'
+  return '#dc2626'
+}
+
+function getVerdictExplanation(score: number, idea: string, industry?: string): string {
+  if (score >= 85) {
+    return `This verdict reflects high market demand, strong software scalability, and low execution risk in the ${industry || 'target'} market. The primary advantage is clear product differentiation against existing solutions.`
+  }
+  if (score >= 70) {
+    return `This verdict reflects strong market demand and software scalability, balanced against active competitor crowding in ${industry || 'the industry'}. Success depends on sharp positioning and fast onboarding.`
+  }
+  if (score >= 50) {
+    return `This verdict indicates clear potential in target customer pain points, but identifies key risks in customer acquisition cost and incumbent feature overlap that require product refinement.`
+  }
+  return `This verdict highlights significant market risk and high incumbent dominance. The business model requires fundamental positioning changes before proceeding.`
+}
+
+function LargeScoreRing({ score, color }: { score: number; color: string }) {
+  const R = 52
   const circ = 2 * Math.PI * R
   const offset = circ - (score / 100) * circ
 
   return (
-    <svg width="112" height="112" viewBox="0 0 112 112" style={{ transform: 'rotate(-90deg)' }}>
-      {/* Track */}
-      <circle cx="56" cy="56" r={R} fill="none" stroke="#e8e8f0" strokeWidth="8" />
-      {/* Progress */}
+    <svg width="132" height="132" viewBox="0 0 140 140" style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx="70" cy="70" r={R} fill="none" stroke="#eef2ff" strokeWidth="10" />
       <motion.circle
-        cx="56" cy="56" r={R}
+        cx="70"
+        cy="70"
+        r={R}
         fill="none"
         stroke={color}
-        strokeWidth="8"
+        strokeWidth="10"
         strokeLinecap="round"
         strokeDasharray={circ}
         initial={{ strokeDashoffset: circ }}
@@ -44,118 +73,158 @@ function ScoreRing({ score, color }: { score: number; color: string }) {
   )
 }
 
-/* ═══════════════════════════════════════════════════════
-   EXECUTIVE SUMMARY
-═══════════════════════════════════════════════════════ */
 export function ExecutiveSummary({ data }: Props) {
   const score = data.validationScore
-  const badge = STATUS_STYLE[data.status] ?? STATUS_STYLE.Moderate
-  const ringColor = score >= 75 ? '#22c55e' : score >= 50 ? C.accent : score >= 30 ? '#f97316' : '#ef4444'
+  const verdictConfig = getVerdictBadgeConfig(score, data.verdict)
+  const ringColor = getRingColor(score)
+  const verdictExplanation = getVerdictExplanation(score, data.idea, data.industry || data.market?.industry)
 
   return (
     <motion.section
       id="executive-summary"
-      {...fadeUp(0.05)}
+      {...fadeUp(0.04)}
       style={{
         backgroundColor: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: RADIUS.xl,
-        padding: '36px',
-        boxShadow: '0 4px 24px rgba(59,59,219,0.07)',
+        padding: '28px 32px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
         display: 'flex',
-        gap: '40px',
-        alignItems: 'flex-start',
+        gap: '32px',
+        alignItems: 'center',
         flexWrap: 'wrap',
         fontFamily: FONT,
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      {/* Left: ring */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        <ScoreRing score={score} color={ringColor} />
-        {/* Center label */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            textAlign: 'center',
-          }}
-        >
-          <motion.span
-            initial={{ opacity: 0, scale: 0.7 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5, duration: 0.4 }}
+      {/* Top accent bar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', backgroundColor: ringColor }} />
+
+      {/* Left: Validation Score Ring & Caption */}
+      <div style={{ position: 'relative', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
+          <LargeScoreRing score={score} color={ringColor} />
+          <div
             style={{
-              display: 'block',
-              fontFamily: FONT,
-              fontSize: '26px',
-              fontWeight: 800,
-              color: ringColor,
-              letterSpacing: '-0.04em',
-              lineHeight: 1,
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            {score}
-          </motion.span>
-          <span style={{ fontSize: '10px', color: C.muted, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            / 100
-          </span>
+            <motion.span
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3, duration: 0.35 }}
+              style={{
+                fontFamily: FONT,
+                fontSize: '36px',
+                fontWeight: 800,
+                color: ringColor,
+                letterSpacing: '-0.05em',
+                lineHeight: 1,
+              }}
+            >
+              {score}
+            </motion.span>
+            <span style={{ fontSize: '12px', color: C.muted, fontWeight: 700, marginTop: '2px', lineHeight: 1 }}>
+              /100
+            </span>
+          </div>
+        </div>
+
+        {/* Section title & helper caption below ring */}
+        <div style={{ marginTop: '14px', textAlign: 'center' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: 800, color: C.primary, margin: '0 0 6px', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+            Overall Score
+          </h3>
+          <p style={{ fontSize: '11px', color: C.muted, margin: 0, fontWeight: 500, lineHeight: 1.3 }}>
+            Weighted average across 6 dimensions
+          </p>
         </div>
       </div>
 
-      {/* Right: text */}
-      <div style={{ flex: 1, minWidth: '220px' }}>
-        {/* Section label */}
-        <p
-          style={{
-            fontSize: '10.5px',
-            fontWeight: 700,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: C.accent,
-            marginBottom: '10px',
-          }}
-        >
-          Executive Summary
-        </p>
+      {/* Right: Startup Name, Verdict, Verdict Explanation, Metadata & Executive Summary */}
+      <div style={{ flex: 1, minWidth: '280px' }}>
+        {/* Badges */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+          <Badge variant={verdictConfig.variant} icon={verdictConfig.icon} size="md">
+            Verdict: {verdictConfig.title}
+          </Badge>
 
-        {/* Status badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          <h2
-            style={{
-              fontFamily: FONT,
-              fontSize: 'clamp(22px, 2.6vw, 30px)',
-              fontWeight: 800,
-              color: C.primary,
-              letterSpacing: '-0.04em',
-              lineHeight: 1.1,
-            }}
-          >
-            Validation Result
-          </h2>
-          <span
-            id="status-badge"
-            style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              background: badge.bg,
-              color: badge.color,
-              borderRadius: RADIUS.pill,
-              padding: '4px 14px',
-              letterSpacing: '0.03em',
-            }}
-          >
-            {data.status}
-          </span>
+          {data.industry && (
+            <Badge variant="primary" icon={Building2} size="sm">
+              {data.industry}
+            </Badge>
+          )}
+
+          {data.targetCountry && (
+            <Badge variant="neutral" icon={MapPin} size="sm">
+              {data.targetCountry}
+            </Badge>
+          )}
+
+          {data.startupStage && (
+            <Badge variant="info" icon={Rocket} size="sm">
+              {data.startupStage}
+            </Badge>
+          )}
+
+          {data.businessModel && (
+            <Badge variant="neutral" icon={Tag} size="sm">
+              {data.businessModel}
+            </Badge>
+          )}
         </div>
 
-        {/* Summary text */}
+        {/* Startup Name */}
+        <h1
+          style={{
+            fontSize: 'clamp(20px, 2.4vw, 26px)',
+            fontWeight: 800,
+            color: C.primary,
+            letterSpacing: '-0.03em',
+            margin: '0 0 10px',
+            lineHeight: '1.2',
+            wordBreak: 'break-word',
+          }}
+        >
+          {data.idea}
+        </h1>
+
+        {/* Verdict Explanation Box */}
+        <div
+          style={{
+            backgroundColor: '#f8f9fe',
+            border: `1px solid ${C.border}`,
+            borderRadius: RADIUS.md,
+            padding: '10px 14px',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+          }}
+        >
+          <Info size={15} color={C.accent} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <p style={{ fontSize: '12.5px', color: C.primary, fontWeight: 600, lineHeight: '1.5', margin: 0 }}>
+            <strong>Verdict Rationale:</strong> {verdictExplanation}
+          </p>
+        </div>
+
+        {/* Concise Narrative */}
         <p
           style={{
-            fontSize: '15px',
+            fontSize: '13.5px',
             color: C.secondary,
-            lineHeight: '1.75',
-            maxWidth: '600px',
+            lineHeight: '1.65',
+            margin: 0,
+            maxWidth: '720px',
           }}
         >
           {data.executiveSummary}

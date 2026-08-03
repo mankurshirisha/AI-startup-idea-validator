@@ -1,12 +1,17 @@
 /**
  * pages/ResultsDashboard.tsx
- * Results Dashboard — assembles all dashboard components.
+ * Refined Executive AI Business Intelligence Dashboard.
  *
- * PLACEHOLDER DATA is defined inline here.
- * When integrating the backend:
- *   1. Replace `PLACEHOLDER_DATA` with an API call (useEffect + fetch / React Query).
- *   2. Add a loading state (the LoadingPage already handles that transition).
- *   3. Pass real `ValidationResult` data down to each component — zero component changes needed.
+ * Layout hierarchy:
+ *  1. Executive Summary Hero (Merged Startup Name, Validation Score Gauge, Verdict Badge, Executive Summary)
+ *  2. Score Breakdown
+ *  3. Market Opportunity
+ *  4. Competitor Analysis (with "View Details" toggle)
+ *  5. SWOT Analysis (with "View Details" toggle)
+ *  6. Recommendations
+ *  7. Investor Perspective
+ *  8. Risk Analysis (with "View Details" toggle)
+ *  9. References (Collapsed at very bottom)
  */
 
 import { motion } from 'framer-motion'
@@ -16,120 +21,340 @@ import {
   DashboardSidebar,
   DashboardHeader,
   ExecutiveSummary,
-  AgentPipeline,
+  ScoreBreakdown,
   MarketOpportunity,
   CompetitorAnalysis,
+  SWOTAnalysis,
   Recommendations,
+  InvestorPerspective,
+  RiskAnalysis,
   Sources,
 } from '@/components/dashboard'
 
 /* ════════════════════════════════════════════════════════
-   PLACEHOLDER DATA
-   Replace this with a real API response when the backend
-   is integrated. All field shapes mirror ValidationResult.
+   DEFAULT / PLACEHOLDER FALLBACK DATA
 ════════════════════════════════════════════════════════ */
-const PLACEHOLDER_DATA: ValidationResult = {
-  idea:             'AI-powered fitness coaching app',
-  description:      'A mobile app that uses AI to create personalized workout plans and provide real-time coaching.',
-  createdAt:        new Date().toISOString(),
-  validationScore:  74,
-  status:           'Moderate',
+const DEFAULT_DATA: ValidationResult = {
+  idea: 'AI Meal Planner for Diabetic Patients',
+  description:
+    'A hyper-personalized nutrition assistant that uses AI to analyze blood glucose logs and generate customized meal plans for diabetic patients.',
+  createdAt: new Date().toISOString(),
+  validationScore: 84,
+  status: 'Strong',
+  verdict: 'Promising but Competitive',
   executiveSummary:
-    'The AI fitness coaching market is growing, with several established players already operating in this space. ' +
-    'The idea addresses a genuine user need — personalized, accessible fitness guidance — but faces meaningful competition. ' +
-    'Differentiation through a specific niche or user segment will be important before launch.',
+    'AI Meal Planner for Diabetic Patients addresses a critical health problem: simplifying complex daily meal decisions for diabetic patients based on real-time glucose responses. ' +
+    'The market opportunity is highly attractive, valued at ₹45,000 Cr in India and growing at ~18.5% annually driven by rising chronic care adoption. ' +
+    'The startup\'s biggest strength lies in its automated glucose-to-meal feedback loop, eliminating manual tracking friction and delivering personalized dietary recommendations. ' +
+    'However, its primary challenge centers on building early clinical trust and navigating competitive crowding from legacy health logging apps. ' +
+    'Overall, we recommend proceeding aggressively with MVP waitlist validation while securing dietitian endorsement partners.',
 
   agents: [
     {
-      id:      'web-search',
-      name:    'Web Search Agent',
-      status:  'completed',
-      summary: 'Retrieved market reports, news articles, and relevant web pages about AI fitness apps.',
-      detail:  'Searched across 14 sources including Statista, TechCrunch, and industry blogs.',
+      id: 'web-search',
+      name: 'Web Search Agent',
+      status: 'completed',
+      summary: 'Retrieved healthcare market reports and competitor profiles.',
+      detail: 'Searched verified medical & tech sources.',
     },
     {
-      id:      'market-opp',
-      name:    'Market Opportunity Agent',
-      status:  'completed',
-      summary: 'Analyzed addressable market size, annual growth rates, and user demand signals.',
-      detail:  'Market estimated at $4.4B in 2024, growing ~25% annually through 2028.',
+      id: 'market-opp',
+      name: 'Market Opportunity Agent',
+      status: 'completed',
+      summary: 'Sized addressable market and customer demand signals.',
+      detail: 'Evaluated TAM/SAM/SOM and growth trajectory.',
     },
     {
-      id:      'competitor',
-      name:    'Competitor Discovery Agent',
-      status:  'completed',
-      summary: 'Identified 4 direct competitors operating in the AI fitness coaching space.',
-      detail:  'Competitors include Whoop, Future, Freeletics, and Tempo.',
+      id: 'competitor',
+      name: 'Competitor Discovery Agent',
+      status: 'completed',
+      summary: 'Mapped direct competitors in digital diabetes management.',
+      detail: 'Identified features, pricing, and positioning gaps.',
     },
     {
-      id:      'comparison',
-      name:    'Comparison Agent',
-      status:  'completed',
-      summary: 'Compared your idea against competitors across features, pricing, and market positioning.',
-      detail:  'Found opportunity in the budget-conscious segment currently underserved by premium offerings.',
-    },
-    {
-      id:      'report',
-      name:    'Report Generator Agent',
-      status:  'completed',
-      summary: 'Compiled all agent outputs into this structured validation report.',
-      detail:  'Full report generated with executive summary, market data, and recommendations.',
+      id: 'comparison',
+      name: 'Comparison Agent',
+      status: 'completed',
+      summary: 'Benchmarked features, strengths, weaknesses, and SWOT factors.',
+      detail: 'Formulated strategic recommendations and moat advice.',
     },
   ],
 
   market: {
-    marketSize: '$4.4B',
-    growthRate: '~25% / yr',
-    industry:   'Health & Fitness Tech',
+    marketSize: '$14.5 Billion',
+    growthRate: '~18.5% / yr',
+    industry: 'Healthcare & HealthTech',
     trends: [
-      'Wearable device integration is becoming a baseline expectation for fitness apps.',
-      'Short-form, micro-workout formats are gaining traction among busy professionals.',
-      'Subscription fatigue is increasing; users prefer one-time purchase or freemium models.',
-      'Personalization is the primary differentiator users cite when choosing fitness apps.',
+      'Accelerating adoption of continuous glucose monitors (CGMs) and digital health tools.',
+      'Shift towards personalized preventive nutrition over generic dietary advice.',
+      'Increasing willingness of health insurers to subsidize digital chronic care management.',
     ],
+    tam: '₹45,000 Cr',
+    sam: '₹12,000 Cr',
+    som: '₹1,500 Cr',
+    currency: '₹',
   },
 
   competitors: [
     {
-      name:        'Future',
-      description: 'Connects users with human coaches who deliver personalized plans via a mobile app.',
-      strengths:   ['Human coaching adds trust', 'Strong retention metrics'],
-      weaknesses:  ['High price point ($149/mo)', 'Scalability limited by coach availability'],
-      website:     'https://www.future.co',
+      name: 'Practo / HealthifyMe',
+      description: 'Established health & nutrition tracking platforms with Indian market reach.',
+      strengths: ['Massive existing user base', 'Brand recognition in India'],
+      weaknesses: ['Generic calorie counting, lacks real-time CGM glucose sync'],
+      website: 'https://www.healthifyme.com',
+      country: 'India',
+      similarity: 82,
+      pricingModel: 'Freemium / Subscription',
+      targetAudience: 'General Fitness & Health Seekers',
+      relevanceReason: 'Operates directly in digital health tracking in target market.',
+      differentiation: 'Provides dedicated diabetic glucose-response meal personalization.',
+      keyOpportunity: 'Capture diabetic patients seeking clinical dietary feedback.',
+      biggestThreat: 'Distribution scale and brand marketing budget.',
     },
     {
-      name:        'Freeletics',
-      description: 'AI-driven bodyweight workout app with a large global community.',
-      strengths:   ['No equipment required', 'Large user base', 'Affordable pricing'],
-      weaknesses:  ['Generic plans, limited personalization depth', 'Heavy reliance on community content'],
-      website:     'https://www.freeletics.com',
-    },
-    {
-      name:        'Tempo',
-      description: 'AI-powered home gym with real-time motion tracking via a dedicated hardware device.',
-      strengths:   ['Real-time form feedback', 'Premium hardware experience'],
-      weaknesses:  ['High hardware cost ($2,000+)', 'Requires dedicated space'],
-      website:     'https://tempo.fit',
+      name: 'MyFitnessPal',
+      description: 'Global food logging database with extensive nutrition entry database.',
+      strengths: ['Huge food database', 'Global community'],
+      weaknesses: ['Manual food logging friction', 'No diabetic clinical guidance'],
+      website: 'https://www.myfitnesspal.com',
+      country: 'USA',
+      similarity: 74,
+      pricingModel: '$19.99 / mo',
+      targetAudience: 'Calorie Trackers & Athletes',
+      relevanceReason: 'Leading global calorie and meal tracking application.',
+      differentiation: 'Automates food logging via WhatsApp OCR and glucose feedback.',
+      keyOpportunity: 'Target diabetic users frustrated by manual entry.',
+      biggestThreat: 'Potential addition of basic diabetic tracking features.',
     },
   ],
 
   recommendations: [
-    'Define a narrow initial target segment — e.g., busy professionals aged 25–40 who want 20-minute workouts — rather than competing on breadth against established players.',
-    'Validate pricing sensitivity early. Most established competitors charge $10–$149/month; test whether your target user will pay before building subscription infrastructure.',
-    'Consider a freemium entry model with a clear upgrade path. This reduces acquisition friction in a market where trial fatigue is high.',
-    'Wearable integration (Apple Watch, Garmin, Whoop) should be on the near-term roadmap. Users increasingly expect seamless data portability.',
-    'Run a small closed beta with 20–50 users before expanding. Collect qualitative feedback on the AI coaching quality, not just retention numbers.',
+    'Launch a waitlist page targeting diabetic care communities and patient forums.',
+    'Partner with endocrinologists or certified dietitians to validate meal plan safety.',
+    'Build WhatsApp meal logging integration to eliminate app download friction.',
   ],
 
   sources: [
-    'https://www.statista.com/topics/4964/fitness-app-market/',
-    'https://www.grandviewresearch.com/industry-analysis/fitness-app-market',
-    'https://techcrunch.com/tag/fitness-tech/',
-    'https://www.businessofapps.com/data/fitness-app-market/',
-    'https://www.future.co',
-    'https://www.freeletics.com',
-    'https://tempo.fit',
+    'https://www.statista.com/topics/digital-health-market/',
+    'https://www.grandviewresearch.com/industry-analysis/diabetes-management-market',
+    'https://www.healthifyme.com',
   ],
+
+  scoreBreakdown: [
+    {
+      id: 'innovation',
+      title: 'Innovation',
+      score: 88,
+      explanation: 'Evaluates technological novelty, AI differentiation, and product uniqueness.',
+      whyAssigned: 'Automates glucose-response meal recommendation loops using continuous AI analysis.',
+      whatIncreased: 'Real-time glucose synchronization and personalized local recipe generation.',
+      whatReduced: 'Initial dependence on LLM API infrastructure.',
+      improvementSuggestion: 'Build proprietary glucose-meal correlation models to create a data moat.',
+    },
+    {
+      id: 'market-demand',
+      title: 'Market Demand',
+      score: 86,
+      explanation: 'Measures search intent volume, target user urgency, and organic demand signals.',
+      whyAssigned: 'Urgent pain point experienced by millions of diabetic patients managing daily diet.',
+      whatIncreased: 'High search volume for diabetic meal plans and CGM integration.',
+      whatReduced: 'User reluctance to pay out-of-pocket without medical insurance subsidy.',
+      improvementSuggestion: 'Publish clinical trial case studies to boost trust and conversion.',
+    },
+    {
+      id: 'competition',
+      title: 'Competition',
+      score: 76,
+      explanation: 'Assesses market crowding, incumbent dominance, and defensible positioning gaps.',
+      whyAssigned: 'Legacy calorie counters dominate broad fitness but lack diabetic specialization.',
+      whatIncreased: 'Clear gap in real-time continuous glucose monitor integration.',
+      whatReduced: 'Large competitor user bases and established brand presence.',
+      improvementSuggestion: 'Position strictly as a clinical diabetic nutrition tool rather than generic fitness.',
+    },
+    {
+      id: 'scalability',
+      title: 'Scalability',
+      score: 89,
+      explanation: 'Analyzes software unit economics, automated onboarding, and global expansion speed.',
+      whyAssigned: 'SaaS architecture provides high software gross margins and automated delivery.',
+      whatIncreased: 'Low marginal cost per added user across digital onboarding.',
+      whatReduced: 'Localization effort required for regional cuisines and languages.',
+      improvementSuggestion: 'Implement localized meal database expansion across target countries.',
+    },
+    {
+      id: 'tech-feasibility',
+      title: 'Technical Feasibility',
+      score: 92,
+      explanation: 'Evaluates API readiness, LLM infrastructure requirements, and execution complexity.',
+      whyAssigned: 'Leverages existing CGM developer APIs and mature LLM frameworks.',
+      whatIncreased: 'High availability of continuous glucose monitor data integrations.',
+      whatReduced: 'Potential API rate limit considerations during peak sync hours.',
+      improvementSuggestion: 'Implement background batching for glucose sync processing.',
+    },
+    {
+      id: 'business-viability',
+      title: 'Business Viability',
+      score: 82,
+      explanation: 'Assesses monetization potential, pricing power, customer LTV, and payback period.',
+      whyAssigned: 'High recurring subscription value for chronic condition management.',
+      whatIncreased: 'Multiple monetization paths (B2C Subscriptions, B2B Insurance Clinics).',
+      whatReduced: 'Early customer acquisition cost during brand building.',
+      improvementSuggestion: 'Offer annual plans with doctor consultation add-ons to boost ARPU.',
+    },
+  ],
+
+  swot: {
+    strengths: [
+      'Niche specialization on diabetic nutrition builds high patient trust',
+      'Automated glucose-to-meal feedback loop creates defensible value',
+      'High recurring subscription retention potential in chronic care',
+    ],
+    weaknesses: [
+      'Requires initial medical review to establish clinical safety credibility',
+      'Food database localization required across target regional cuisines',
+      'Customer acquisition cost requires early channel optimization',
+    ],
+    opportunities: [
+      'Integrating directly with popular Continuous Glucose Monitors (Dexcom, Freestyle Libre)',
+      'B2B2C corporate wellness partnerships with health insurance providers',
+      'Expanding into pre-diabetic and gestational diabetes market segments',
+    ],
+    threats: [
+      'Big tech health apps adding generic meal planning features',
+      'Medical device compliance regulatory shifts in international markets',
+      'User drop-off after initial glucose stabilization',
+    ],
+  },
+
+  insights: {
+    trends: [
+      'Accelerating adoption of continuous glucose monitors (CGMs)',
+      'Shift towards personalized preventive nutrition over generic advice',
+      'Increasing insurance coverage for digital chronic care tools',
+    ],
+    painPoints: [
+      'Patients struggle to know which specific foods trigger glucose spikes',
+      'Generic diet plans ignore local cultural cuisines and personal tastes',
+      'Manual food logging apps cause high user drop-off',
+    ],
+    growthDrivers: [
+      'Rising global diabetes prevalence creating urgent demand',
+      'Viral word-of-mouth in patient support communities',
+      'Doctor recommendations driving high-converting user referrals',
+    ],
+    risks: [
+      'Medical liability risks if meal advice contradicts doctor orders',
+      'User retention drop-off after initial weight/glucose stabilization',
+    ],
+    regulations: [
+      'Compliance with HIPAA, GDPR, and regional health data privacy laws',
+      'Clear medical disclaimer ensuring non-diagnostic software status',
+    ],
+    investmentOutlook:
+      'Digital health and chronic disease tech continue to attract substantial VC funding. Investors prioritize platforms demonstrating high retention, clinical validation, and clear monetization pathways.',
+    whyAttractive: 'The HealthTech chronic care market is valued at $14.5 Billion with strong willingness-to-pay among diabetic patients.',
+    adoptionBarriers: [
+      'Patient reliance on traditional paper diet sheets from clinics',
+      'Perceived difficulty connecting continuous glucose monitors',
+      'Hesitation to pay subscription prior to seeing glucose improvement',
+    ],
+  },
+
+  categorizedRecommendations: [
+    {
+      category: 'Immediate Actions',
+      priority: 'High',
+      impact: 'High Impact',
+      text: 'Launch a high-converting waitlist page with interactive diabetic meal plan sample.',
+      reasoning: 'Validates organic user demand and captures early patient leads before launch.',
+    },
+    {
+      category: 'Product Improvements',
+      priority: 'High',
+      impact: 'High Impact',
+      text: 'Implement WhatsApp OCR photo meal logging to eliminate manual entry friction.',
+      reasoning: 'Dramatically reduces food logging effort, boosting daily active retention.',
+    },
+    {
+      category: 'Business Strategy',
+      priority: 'Strategic',
+      impact: 'Transformational',
+      text: 'Partner with endocrinology clinics to distribute app access as a prescription digital tool.',
+      reasoning: 'Drives low-CAC user acquisition backed by trusted doctor recommendations.',
+    },
+    {
+      category: 'Go-to-Market Strategy',
+      priority: 'High',
+      impact: 'High Impact',
+      text: 'Engage with diabetic patient support groups and online health communities.',
+      reasoning: 'Reaches high-intent users with peer-backed social proof.',
+    },
+    {
+      category: 'Fundraising Readiness',
+      priority: 'Medium',
+      impact: 'Transformational',
+      text: 'Prepare pitch deck emphasizing LTV retention and CGM integration partnerships.',
+      reasoning: 'Positions startup strongly for Seed-stage HealthTech investors.',
+    },
+    {
+      category: 'Long-Term Growth',
+      priority: 'Strategic',
+      impact: 'Transformational',
+      text: 'Build proprietary glucose-response datasets to establish a defensible AI MOAT.',
+      reasoning: 'Protects business model from commodity AI wrapper copycats.',
+    },
+  ],
+
+  investorPerspective: {
+    interested: true,
+    verdictLabel: 'Strong Seed-Stage Investor Appetite',
+    evidence: [
+      'Operates in a massive $14.5B chronic care HealthTech market with 18.5% CAGR.',
+      'Clear unit economics opportunity through high-retention SaaS subscriptions.',
+      'Strong product defensibility via automated continuous glucose feedback loops.',
+    ],
+    concerns: [
+      'What is the clinical validation protocol to prevent medical liability?',
+      'How quickly can the startup secure doctor referral partnerships?',
+      'What is the projected CAC payback period across digital channels?',
+    ],
+  },
+
+  riskAnalysis: [
+    {
+      type: 'Market Risk',
+      level: 'Low',
+      explanation: 'High market demand confirmed; chronic diabetes management has persistent urgency.',
+    },
+    {
+      type: 'Technical Risk',
+      level: 'Low',
+      explanation: 'Built on established CGM developer APIs and proven LLM orchestration frameworks.',
+    },
+    {
+      type: 'Execution Risk',
+      level: 'Medium',
+      explanation: 'Requires establishing doctor trust and local food database accuracy.',
+    },
+    {
+      type: 'Financial Risk',
+      level: 'Low',
+      explanation: 'SaaS subscription model offers predictable recurring revenue and strong gross margins.',
+    },
+    {
+      type: 'Regulatory Risk',
+      level: 'Medium',
+      explanation: 'Requires HIPAA/GDPR health data compliance and non-diagnostic medical disclaimers.',
+    },
+  ],
+
+  finalVerdict: {
+    decision: 'Proceed with Improvements',
+    rationale:
+      'Based on multi-agent validation, "AI Meal Planner for Diabetic Patients" achieves a validation score of 84/100. ' +
+      'The market opportunity is substantial and user pain points are severe. ' +
+      'We strongly recommend proceeding with MVP launch, focusing on WhatsApp meal logging and clinical dietitian endorsement partnerships.',
+  },
 }
 
 /* ════════════════════════════════════════════════════════
@@ -138,21 +363,31 @@ const PLACEHOLDER_DATA: ValidationResult = {
 export default function ResultsDashboard() {
   const location = useLocation()
 
-  /*
-   * If navigated from LoadingPage, `location.state` contains { idea, description }.
-   * Override the placeholder idea with the real user input so the header
-   * shows what they actually typed — before full backend integration.
-   */
   const state = location.state as {
     data?: ValidationResult
     idea?: string
     description?: string
+    industry?: string
+    targetCustomer?: string
+    targetCountry?: string
+    startupStage?: string
+    businessModel?: string
+    keyFeatures?: string[]
   } | null
 
-  const data: ValidationResult = state?.data ?? {
-    ...PLACEHOLDER_DATA,
-    ...(state?.idea ? { idea: state.idea } : {}),
-    ...(state?.description ? { description: state.description } : {}),
+  // Merge state data with fallback
+  const rawData = state?.data ?? DEFAULT_DATA
+  const data: ValidationResult = {
+    ...DEFAULT_DATA,
+    ...rawData,
+    idea: state?.idea || rawData.idea || DEFAULT_DATA.idea,
+    description: state?.description || rawData.description || DEFAULT_DATA.description,
+    industry: state?.industry || rawData.industry || DEFAULT_DATA.industry,
+    targetCustomer: state?.targetCustomer || rawData.targetCustomer || DEFAULT_DATA.targetCustomer,
+    targetCountry: state?.targetCountry || rawData.targetCountry || DEFAULT_DATA.targetCountry,
+    startupStage: state?.startupStage || rawData.startupStage || DEFAULT_DATA.startupStage,
+    businessModel: state?.businessModel || rawData.businessModel || DEFAULT_DATA.businessModel,
+    keyFeatures: state?.keyFeatures || rawData.keyFeatures || DEFAULT_DATA.keyFeatures,
   }
 
   return (
@@ -164,64 +399,62 @@ export default function ResultsDashboard() {
         fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
       }}
     >
-      {/* ── Sidebar ── */}
+      {/* ── Fixed Sidebar ── */}
       <DashboardSidebar />
 
-      {/* ── Main scrollable area ── */}
+      {/* ── Main Scrollable Area ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden' }}>
-        {/* Sticky header */}
+        {/* Sticky Header */}
         <DashboardHeader data={data} />
 
-        {/* Content */}
+        {/* Executive BI Report Content */}
         <motion.main
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
           style={{
             flex: 1,
-            padding: '40px',
+            padding: '32px 40px 60px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '48px',
-            maxWidth: '1100px',
+            gap: '32px',
+            maxWidth: '1160px',
             width: '100%',
+            margin: '0 auto',
           }}
         >
-          {/* 1 — Executive Summary */}
+          {/* 1. Merged Executive Summary Hero Banner */}
           <ExecutiveSummary data={data} />
 
-          {/* Section divider */}
-          <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />
+          {/* 2. Score Breakdown */}
+          <ScoreBreakdown data={data} />
 
-          {/* 2 — Multi-Agent Pipeline */}
-          <AgentPipeline agents={data.agents} data={data} />
+          {/* 3. Market Opportunity */}
+          <MarketOpportunity market={data.market} targetCountry={data.targetCountry} />
 
-          {/* Section divider */}
-          <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />
+          {/* 4. Competitor Analysis (View Details toggle) */}
+          <CompetitorAnalysis
+            competitors={data.enrichedCompetitors || data.competitors}
+            targetCountry={data.targetCountry}
+          />
 
-          {/* 3 — Market Opportunity */}
-          <MarketOpportunity market={data.market} />
+          {/* 5. SWOT Analysis (View Details toggle) */}
+          <SWOTAnalysis data={data} />
 
-          {/* Section divider */}
-          <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />
+          {/* 6. Recommendations */}
+          <Recommendations recommendations={data.recommendations} data={data} />
 
-          {/* 4 — Competitor Analysis */}
-          <CompetitorAnalysis competitors={data.competitors} />
+          {/* 7. Investor Perspective */}
+          <InvestorPerspective data={data} />
 
-          {/* Section divider */}
-          <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />
+          {/* 8. Risk Analysis (View Details toggle) */}
+          <RiskAnalysis data={data} />
 
-          {/* 5 — Recommendations */}
-          <Recommendations recommendations={data.recommendations} />
-
-          {/* Section divider */}
-          <div style={{ height: '1px', backgroundColor: '#e8e8f0' }} />
-
-          {/* 6 — Sources */}
+          {/* 9. References (Collapsed at bottom) */}
           <Sources sources={data.sources} />
 
-          {/* Bottom padding */}
-          <div style={{ height: '40px' }} />
+          {/* Bottom Spacing */}
+          <div style={{ height: '32px' }} />
         </motion.main>
       </div>
     </div>

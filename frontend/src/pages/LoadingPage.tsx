@@ -11,12 +11,13 @@
  *   • Border-radius: 20-24px for cards, 12px for inputs/buttons
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { CheckCircle2, Circle, Loader2, AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react'
 import { BarLoader } from '@/components/ui/BarLoader'
-import { validateStartupIdea } from '@/lib/validationService'
+import { mapBackendToValidationResult } from '@/lib/validationService'
+import type { BackendValidationResponse } from '@/lib/validationService'
 import type { ValidationResult } from '@/types/dashboard'
 
 /* ─── Design tokens — must stay in sync with index.css ─── */
@@ -47,7 +48,6 @@ interface Agent {
   id: string
   label: string
   description: string
-  duration: number  // ms this step takes to "complete"
 }
 
 const AGENTS: Agent[] = [
@@ -55,35 +55,33 @@ const AGENTS: Agent[] = [
     id: 'web-search',
     label: 'Web Search Agent',
     description: 'Fetching live data from trusted market sources',
-    duration: 3500,
   },
   {
     id: 'market-opp',
     label: 'Market Opportunity Agent',
     description: 'Sizing the addressable market and growth trajectory',
-    duration: 4000,
   },
   {
     id: 'competitor',
     label: 'Competitor Discovery Agent',
     description: 'Mapping competitive landscape and positioning gaps',
-    duration: 4000,
   },
   {
     id: 'comparison',
     label: 'Comparison Agent',
     description: 'Benchmarking against industry benchmarks and alternatives',
-    duration: 3500,
-  },
-  {
-    id: 'report',
-    label: 'Report Generator',
-    description: 'Compiling executive summary and actionable insights',
-    duration: 3000,
   },
 ]
 
-/* ─── Status messages (rotate while loading) ─────────── */
+/* ─── Backend stage → AGENTS array index ─────────────── */
+const STAGE_TO_IDX: Record<string, number> = {
+  web_search: 0,
+  market_opp: 1,
+  competitor:  2,
+  comparison:  3,
+}
+
+/* ─── Status messages (rotate while loading) ────────── */
 const STATUS_MESSAGES = [
   'Searching trusted market sources...',
   'Analyzing industry trends...',
@@ -91,7 +89,6 @@ const STATUS_MESSAGES = [
   'Calculating market opportunity...',
   'Comparing your startup to alternatives...',
   'Generating executive summary...',
-  'Preparing your final report...',
 ]
 
 /* ─── Agent status icon ───────────────────────────────── */
@@ -162,12 +159,35 @@ export default function LoadingPage() {
   const location = useLocation()
 
   // Idea context passed from the landing page form (via state)
-  const locState = location.state as { idea?: string; description?: string } | null
+  const locState = location.state as {
+    idea?: string
+    description?: string
+    industry?: string
+    targetCustomer?: string
+    targetCountry?: string
+    startupStage?: string
+    businessModel?: string
+    keyFeatures?: string[]
+  } | null
+
+  // Direct access guard: redirect to home if accessed directly without submission context
+  useEffect(() => {
+    if (!locState || !locState.idea || locState.idea.trim().length < 2) {
+      navigate('/', { replace: true })
+    }
+  }, [locState, navigate])
+
   const idea = locState?.idea ?? 'Your Startup Idea'
   const description = locState?.description ?? ''
+  const industry = locState?.industry ?? ''
+  const targetCustomer = locState?.targetCustomer ?? ''
+  const targetCountry = locState?.targetCountry ?? 'Global'
+  const startupStage = locState?.startupStage ?? 'Idea'
+  const businessModel = locState?.businessModel ?? 'B2B'
+  const keyFeatures = locState?.keyFeatures ?? []
 
   /* ── Agent pipeline progress ── */
-  const [activeAgentIdx, setActiveAgentIdx] = useState(0)
+  const [runningAgents, setRunningAgents] = useState<Set<number>>(new Set([0]))
   const [completedAgents, setCompletedAgents] = useState<Set<number>>(new Set())
   const [allDone, setAllDone] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
@@ -181,102 +201,183 @@ export default function LoadingPage() {
   const [msgIdx, setMsgIdx] = useState(0)
   const [msgVisible, setMsgVisible] = useState(true)
 
-  const pipelineRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  /* ── Trigger Backend Validation ── */
+  /* ── SSE pipeline: drives agent cards from real backend events ── */
   useEffect(() => {
-    let active = true
+    if (!locState || !locState.idea) return
+
+    let aborted = false
+    const controller = new AbortController()
     setErrorMsg(null)
 
-    validateStartupIdea({ startupIdea: idea, description })
-      .then((result) => {
-        if (!active) return
-        setApiResult(result)
-      })
-      .catch((err) => {
-        if (!active) return
-        setErrorMsg(err.message || 'Validation service failed. Please try again.')
-      })
+    // Derive base URL the same way the axios client does
+    const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
-    return () => {
-      active = false
-    }
-  }, [idea, description, isRetrying])
+    ;(async () => {
+      try {
+        const res = await fetch(`${baseUrl}/startup-validator-stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            startupIdea: idea,
+            description: description || idea,
+            industry,
+            targetCustomer,
+            targetCountry,
+            startupStage,
+            businessModel,
+            keyFeatures,
+          }),
+          signal: controller.signal,
+        })
 
-  /* ── Run visual agent pipeline progress ── */
-  useEffect(() => {
-    let cancelled = false
-    let idx = 0
 
-    const runNext = () => {
-      if (cancelled || idx >= AGENTS.length) return
-      const agent = AGENTS[idx]
+        if (!res.ok || !res.body) {
+          throw new Error(
+            `Server returned ${res.status}. Please try again.`,
+          )
+        }
 
-      pipelineRef.current = setTimeout(() => {
-        if (cancelled) return
-        setCompletedAgents((prev) => new Set([...prev, idx]))
-        idx++
-        if (idx < AGENTS.length) {
-          setActiveAgentIdx(idx)
-          runNext()
-        } else {
-          // Visual pipeline complete
-          if (!cancelled) {
-            setAllDone(true)
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done || aborted) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const raw = line.slice(6).trim()
+            if (!raw) continue
+
+            let event: Record<string, unknown>
+            try {
+              event = JSON.parse(raw) as Record<string, unknown>
+            } catch {
+              continue
+            }
+
+            if (aborted) return
+
+            const stage = event.stage as string
+
+            if (stage === 'error') {
+              setErrorMsg(
+                (event.detail as string) || 'Validation failed. Please try again.',
+              )
+              return
+            }
+
+            if (stage === 'done') {
+              const mapped = mapBackendToValidationResult(
+                event.result as BackendValidationResponse,
+                idea,
+                description,
+              )
+              setApiResult(mapped)
+              setAllDone(true)
+              setRunningAgents(new Set())
+              setCompletedAgents(new Set([0, 1, 2, 3]))
+              return
+            }
+
+            const idx = STAGE_TO_IDX[stage]
+            if (idx === undefined) continue
+
+            if (event.status === 'running') {
+              setRunningAgents((prev) => new Set([...prev, idx]))
+            } else if (event.status === 'done') {
+              setRunningAgents((prev) => {
+                const next = new Set(prev)
+                next.delete(idx)
+                return next
+              })
+              setCompletedAgents((prev) => new Set([...prev, idx]))
+            }
           }
         }
-      }, agent.duration)
-    }
+      } catch (err: unknown) {
+        if (aborted) return
+        if (err instanceof Error && err.name === 'AbortError') return
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Validation service failed. Please try again.'
+        setErrorMsg(msg)
+      }
+    })()
 
-    runNext()
     return () => {
-      cancelled = true
-      if (pipelineRef.current) clearTimeout(pipelineRef.current)
+      aborted = true
+      controller.abort()
     }
-  }, [isRetrying])
+  }, [idea, description, isRetrying, locState])
+
+  const personalizedMessages = [
+    `Researching the ${industry || 'target'} market in ${targetCountry}...`,
+    `Finding competitors serving ${targetCustomer || 'target users'} in ${targetCountry}...`,
+    `Estimating addressable market opportunity for ${businessModel || 'your'} business...`,
+    `Comparing your startup with existing ${industry || 'market'} solutions...`,
+    `Evaluating product-market fit for ${targetCustomer || 'your customers'} in ${targetCountry}...`,
+    `Generating personalized validation report for ${targetCountry}...`,
+  ]
 
   /* ── Rotate status message every 3.5s ── */
   useEffect(() => {
     const rotate = setInterval(() => {
       setMsgVisible(false)
       setTimeout(() => {
-        setMsgIdx((i) => (i + 1) % STATUS_MESSAGES.length)
+        setMsgIdx((i) => (i + 1) % personalizedMessages.length)
         setMsgVisible(true)
       }, 350)
     }, 3500)
     return () => clearInterval(rotate)
-  }, [])
+  }, [personalizedMessages.length])
+
 
   /* ── Navigate to results once allDone AND apiResult ready ── */
   useEffect(() => {
     if (errorMsg) return
     if (!allDone) return
-
-    // If visual pipeline finished but API is still processing, mark all agents complete once API responds
     if (!apiResult) return
 
     setTransitioning(true)
     const t = setTimeout(() => {
       navigate('/results', {
+        replace: true, // Replace transient /loading history entry
         state: {
           data: apiResult,
           idea,
           description,
+          industry,
+          targetCustomer,
+          targetCountry,
+          startupStage,
+          businessModel,
+          keyFeatures,
         },
       })
-    }, 1800)
+    }, 400)
     return () => clearTimeout(t)
   }, [allDone, apiResult, errorMsg, navigate, idea, description])
 
   /* ── Determine status of each agent ── */
   const getStatus = (idx: number): AgentStatus => {
     if (completedAgents.has(idx) || allDone) return 'done'
-    if (idx === activeAgentIdx && !completedAgents.has(idx)) return 'running'
+    if (runningAgents.has(idx)) return 'running'
+    // Logical dependency rules: if a later stage is active/done, earlier dependent stages are done
+    if (idx === 0 && (runningAgents.has(1) || runningAgents.has(2) || runningAgents.has(3) || completedAgents.has(1) || completedAgents.has(2) || completedAgents.has(3))) {
+      return 'done'
+    }
+    if ((idx === 1 || idx === 2) && (runningAgents.has(3) || completedAgents.has(3))) {
+      return 'done'
+    }
     return 'waiting'
   }
-
-  const totalMs = AGENTS.reduce((s, a) => s + a.duration, 0)
-  const estimateSec = Math.round(totalMs / 1000)
 
   return (
     <motion.div
@@ -348,179 +449,26 @@ export default function LoadingPage() {
             gap: '0px',
           }}
         >
-          {/* ── Small AI badge ── */}
-          <motion.div {...fadeUp(0)} style={{ marginBottom: '32px' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: '#3b3bdb0f',
-                border: '1px solid #3b3bdb22',
-                borderRadius: '100px',
-                padding: '6px 16px',
-              }}
-            >
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }}
-              >
-                <Loader2 size={13} color={C.accent} strokeWidth={2.5} />
-              </motion.div>
-              <span
-                style={{
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: C.accent,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                AI Analysis Running
-              </span>
-            </div>
-          </motion.div>
-
-          {/* ── Logo / Brand ── */}
-          <motion.div {...fadeUp(0.06)} style={{ marginBottom: '12px' }}>
-            <span
-              style={{
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: '18px',
-                fontWeight: 800,
-                color: C.primary,
-                letterSpacing: '-0.04em',
-              }}
-            >
-              BeforeBeta
-            </span>
-          </motion.div>
-
-          {/* ── Error Notification Card ── */}
-          {errorMsg && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={{
-                width: '100%',
-                backgroundColor: '#ffffff',
-                border: '1.5px solid #fee2e2',
-                borderRadius: '20px',
-                padding: '28px',
-                boxShadow: '0 8px 30px rgba(239,68,68,0.08)',
-                marginBottom: '36px',
-                textAlign: 'center',
-                fontFamily: "'DM Sans', sans-serif",
-              }}
-            >
-              <div
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '14px',
-                  background: '#fee2e2',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 16px',
-                }}
-              >
-                <AlertTriangle size={24} color="#dc2626" strokeWidth={2} />
-              </div>
-              <h3
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 800,
-                  color: C.primary,
-                  marginBottom: '8px',
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                Validation Encountered an Issue
-              </h3>
-              <p
-                style={{
-                  fontSize: '14px',
-                  color: C.secondary,
-                  lineHeight: '1.6',
-                  marginBottom: '24px',
-                  maxWidth: '440px',
-                  margin: '0 auto 24px',
-                }}
-              >
-                {errorMsg}
-              </p>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => {
-                    setErrorMsg(null)
-                    setAllDone(false)
-                    setCompletedAgents(new Set())
-                    setActiveAgentIdx(0)
-                    setIsRetrying((prev) => prev + 1)
-                  }}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '11px 22px',
-                    backgroundColor: C.accent,
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    fontFamily: "'DM Sans', sans-serif",
-                  }}
-                >
-                  <RotateCcw size={15} strokeWidth={2.2} />
-                  Retry Validation
-                </button>
-                <button
-                  onClick={() => navigate('/')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '11px 22px',
-                    backgroundColor: 'transparent',
-                    color: C.primary,
-                    border: `1.5px solid ${C.border}`,
-                    borderRadius: '12px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: "'DM Sans', sans-serif",
-                  }}
-                >
-                  <ArrowLeft size={15} strokeWidth={2.2} />
-                  Back to Home
-                </button>
-              </div>
-            </motion.div>
-          )}
-
           {/* ── Main heading ── */}
           <motion.h1
             {...fadeUp(0.1)}
             style={{
               fontFamily: "'DM Sans', sans-serif",
-              fontSize: 'clamp(28px, 4vw, 40px)',
+              fontSize: 'clamp(26px, 3.8vw, 36px)',
               fontWeight: 800,
               lineHeight: '1.1',
               letterSpacing: '-0.04em',
               color: C.primary,
               textAlign: 'center',
-              marginBottom: '16px',
+              marginBottom: '12px',
             }}
           >
             {errorMsg ? (
               <span style={{ color: '#dc2626' }}>Validation Interrupted</span>
             ) : allDone ? (
-              <span style={{ color: C.accent }}>✓ Validation Complete</span>
+              <span style={{ color: C.accent }}>Validation Complete</span>
             ) : (
-              'Validating Your Startup'
+              'Validating Startup Idea'
             )}
           </motion.h1>
 
@@ -528,25 +476,25 @@ export default function LoadingPage() {
           <motion.p
             {...fadeUp(0.16)}
             style={{
-              fontSize: '16px',
+              fontSize: '15px',
               fontWeight: 400,
-              lineHeight: '1.70',
+              lineHeight: '1.6',
               color: C.secondary,
               textAlign: 'center',
               maxWidth: '420px',
-              marginBottom: '44px',
+              marginBottom: '36px',
             }}
           >
             {allDone
-              ? 'Preparing your dashboard...'
-              : 'Our AI agents are analyzing your idea using live market intelligence.'}
+              ? 'Preparing your validation dashboard...'
+              : 'Executing multi-agent market research and competitive analysis.'}
           </motion.p>
 
           {/* ── Bar Loader ── */}
           {!allDone && (
             <motion.div
               {...fadeUp(0.22)}
-              style={{ marginBottom: '48px' }}
+              style={{ marginBottom: '40px' }}
             >
               <BarLoader width={280} height={5} blockWidth={90} />
             </motion.div>
@@ -558,7 +506,7 @@ export default function LoadingPage() {
               initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.5, type: 'spring', stiffness: 200 }}
-              style={{ marginBottom: '48px' }}
+              style={{ marginBottom: '40px' }}
             >
               <div
                 style={{
@@ -575,6 +523,72 @@ export default function LoadingPage() {
               </div>
             </motion.div>
           )}
+
+          {/* ══════════════════════════════════════
+              STARTUP OVERVIEW SUMMARY CARD
+          ══════════════════════════════════════ */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease }}
+            style={{
+              width: '100%',
+              backgroundColor: '#f8f9fe',
+              border: `1px solid ${C.border}`,
+              borderRadius: '20px',
+              padding: '20px 24px',
+              marginBottom: '24px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 800, color: C.primary, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Startup Overview
+              </h3>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: C.accent, backgroundColor: '#3b3bdb12', padding: '3px 10px', borderRadius: '100px' }}>
+                Validation In Progress
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', fontSize: '13px' }}>
+              <div style={{ gridColumn: 'span 2' }}>
+                <span style={{ fontWeight: 700, color: C.secondary }}>Idea: </span>
+                <span style={{ fontWeight: 600, color: C.primary }}>{idea}</span>
+              </div>
+
+              <div>
+                <span style={{ fontWeight: 700, color: C.secondary }}>Industry: </span>
+                <span style={{ fontWeight: 600, color: C.primary }}>{industry || 'Technology'}</span>
+              </div>
+
+              <div>
+                <span style={{ fontWeight: 700, color: C.secondary }}>Target Customer: </span>
+                <span style={{ fontWeight: 600, color: C.primary }}>{targetCustomer || 'General Users'}</span>
+              </div>
+
+              <div>
+                <span style={{ fontWeight: 700, color: C.secondary }}>Target Market: </span>
+                <span style={{ fontWeight: 600, color: C.primary }}>{targetCountry}</span>
+              </div>
+
+              <div>
+                <span style={{ fontWeight: 700, color: C.secondary }}>Stage: </span>
+                <span style={{ fontWeight: 600, color: C.primary }}>{startupStage || 'Idea Stage'}</span>
+              </div>
+
+              <div>
+                <span style={{ fontWeight: 700, color: C.secondary }}>Business Model: </span>
+                <span style={{ fontWeight: 600, color: C.primary }}>{businessModel || 'B2B / B2C'}</span>
+              </div>
+
+              {keyFeatures.length > 0 && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <span style={{ fontWeight: 700, color: C.secondary }}>Key Features: </span>
+                  <span style={{ fontWeight: 600, color: C.primary }}>{keyFeatures.join(', ')}</span>
+                </div>
+              )}
+            </div>
+          </motion.div>
 
           {/* ══════════════════════════════════════
               PROGRESS CARD
@@ -617,14 +631,14 @@ export default function LoadingPage() {
                 </p>
                 <h2
                   style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: '16px',
-                    fontWeight: 700,
+                    fontSize: '18px',
+                    fontWeight: 800,
                     color: C.primary,
                     letterSpacing: '-0.02em',
+                    margin: 0,
                   }}
                 >
-                  5 AI Agents Working
+                  Executing Multi-Agent Analysis
                 </h2>
               </div>
 
@@ -648,16 +662,9 @@ export default function LoadingPage() {
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  {completedAgents.size}
-                </span>
-                <span
-                  style={{
-                    fontSize: '12px',
-                    color: C.muted,
-                    fontWeight: 500,
-                  }}
-                >
-                  / {AGENTS.length}
+                  {allDone
+                    ? '4 of 4 Done'
+                    : `${completedAgents.size} of 4 Complete`}
                 </span>
               </div>
             </div>
@@ -790,7 +797,7 @@ export default function LoadingPage() {
                       letterSpacing: '-0.01em',
                     }}
                   >
-                    {STATUS_MESSAGES[msgIdx]}
+                    {personalizedMessages[msgIdx]}
                   </motion.p>
                 )}
               </AnimatePresence>
@@ -827,7 +834,7 @@ export default function LoadingPage() {
                   letterSpacing: '-0.02em',
                 }}
               >
-                {Math.round(estimateSec / 5) * 5 - 5}–{Math.round(estimateSec / 5) * 5} seconds
+                30–90 seconds
               </p>
             </motion.div>
           )}

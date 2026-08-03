@@ -12,13 +12,11 @@ import {
   TrendingUp,
   Users,
   GitCompare,
-  FileText,
   ExternalLink,
   ChevronDown,
   ChevronUp,
   Check,
   X,
-  Award,
 } from 'lucide-react'
 import type { AgentResult, AgentStatus, ValidationResult } from '@/types/dashboard'
 import { C, FONT, RADIUS, fadeUp } from './tokens'
@@ -37,7 +35,6 @@ const AGENT_ICONS: Record<
   'market-opp': TrendingUp,
   competitor: Users,
   comparison: GitCompare,
-  report: FileText,
 }
 
 /* ── Status indicator ── */
@@ -388,57 +385,11 @@ function ComparisonDetails({ data }: { data?: ValidationResult }) {
   )
 }
 
-function ReportDetails({ data }: { data?: ValidationResult }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div>
-        <SectionTag label="Executive Summary" />
-        <p style={{ fontSize: '13px', color: C.primary, lineHeight: '1.6', margin: 0 }}>
-          {data?.executiveSummary}
-        </p>
-      </div>
-
-      <div>
-        <SectionTag label="Final Validation Score" />
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '12px',
-            backgroundColor: '#f8f8fc',
-            padding: '10px 16px',
-            borderRadius: RADIUS.md,
-            border: `1px solid ${C.border}`,
-          }}
-        >
-          <Award size={20} color={C.accent} />
-          <div>
-            <span style={{ fontSize: '18px', fontWeight: 800, color: C.primary }}>{data?.validationScore}/100</span>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a', marginLeft: '8px' }}>
-              ({data?.status ?? 'Moderate'})
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <SectionTag label="Overall Strategic Recommendation" />
-        <div style={{ backgroundColor: '#eef2ff', padding: '12px', borderRadius: RADIUS.md, border: `1px solid ${C.accentSoft}` }}>
-          <p style={{ fontSize: '12.5px', color: C.accent, fontWeight: 600, margin: 0, lineHeight: '1.5' }}>
-            {data?.recommendations[0] ?? 'Proceed with pilot launch while focusing on key user segment positioning.'}
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function AgentDetailsDrawer({ agent, data }: { agent: AgentResult; data?: ValidationResult }) {
   if (agent.id === 'web-search') return <WebSearchDetails data={data} agent={agent} />
   if (agent.id === 'market-opp') return <MarketOppDetails data={data} />
   if (agent.id === 'competitor') return <CompetitorDetails data={data} />
   if (agent.id === 'comparison') return <ComparisonDetails data={data} />
-  if (agent.id === 'report') return <ReportDetails data={data} />
   return <p style={{ fontSize: '13px', color: C.secondary }}>{agent.detail}</p>
 }
 
@@ -639,7 +590,7 @@ export function AgentPipeline({ agents, data }: Props) {
             lineHeight: 1.2,
           }}
         >
-          Five agents. One pipeline.
+          Four agents. One pipeline.
         </h2>
       </motion.div>
 

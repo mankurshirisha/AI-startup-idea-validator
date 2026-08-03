@@ -51,7 +51,13 @@ app.add_middleware(
 
 class IdeaRequest(BaseModel):
     idea: str
-    description: str
+    description: str = ""
+    industry: str = ""
+    targetCustomer: str = ""
+    targetCountry: str = "Global"
+    startupStage: str = "Idea"
+    businessModel: str = "B2B"
+    keyFeatures: list = []
 
 
 # ==========================================================
@@ -59,34 +65,50 @@ class IdeaRequest(BaseModel):
 # ==========================================================
 
 
-def run_web_search_agent(idea: str, description: str):
-    """Run the web search analysis workflow.
+def run_web_search_agent(
+    idea: str,
+    description: str = "",
+    industry: str = "",
+    target_customer: str = "",
+    target_country: str = "Global",
+    startup_stage: str = "Idea",
+    business_model: str = "B2B",
+    key_features: list = None,
+):
+    """Run the context-aware web search analysis workflow.
 
     Args:
         idea: The startup idea to analyze.
         description: A description of the startup idea.
+        industry: Industry / Domain.
+        target_customer: Target Customer segment.
+        target_country: Target Country / Location.
+        startup_stage: Startup Stage (Idea, MVP, Beta, Launched).
+        business_model: Business Model (B2B, B2C, SaaS, etc.).
+        key_features: List of key features.
 
     Returns:
         dict: A structured market research payload.
-
-    Raises:
-        HTTPException: If the input is invalid or the external search or Gemini call fails.
     """
     logger.info("Web search agent request received")
 
     idea = idea.strip()
-    description = description.strip()
+    description = description.strip() if description else idea
+    industry = industry.strip() if industry else "General Tech"
+    target_customer = target_customer.strip() if target_customer else "Target Users"
+    target_country = target_country.strip() if target_country else "Global"
+    business_model = business_model.strip() if business_model else "B2C"
+    features_str = ", ".join(key_features) if key_features else "N/A"
 
-    if len(idea) < 3:
+    if len(idea) < 2:
         raise HTTPException(status_code=400, detail="Invalid startup idea.")
 
-    if len(description) < 10:
-        raise HTTPException(status_code=400, detail="Description is too short.")
-
+    # Location-specific query building
     query = (
-        f"{idea}. "
-        f"{description}. "
-        "Market size, industry, market trends, competitors, target users."
+        f"{idea} in {target_country}. "
+        f"Industry: {industry}. Target Customer: {target_customer}. Business Model: {business_model}. "
+        f"Key features: {features_str}. "
+        f"Local market size, local competitors, government regulations, demand trends, funding."
     )
 
     # ======================================================
@@ -94,13 +116,12 @@ def run_web_search_agent(idea: str, description: str):
     # ======================================================
 
     try:
-        logger.info("Starting Tavily search request")
+        logger.info("Starting Tavily search request for region: %s", target_country)
         search = tavily_client.search(query=query, search_depth="advanced")
 
         processed_sources = []
 
         for item in search.get("results", []):
-
             processed_sources.append(
                 {"url": item.get("url"), "content": item.get("content")}
             )
@@ -122,28 +143,36 @@ def run_web_search_agent(idea: str, description: str):
     # ======================================================
 
     prompt = f"""
-You are an expert Startup Market Research Agent.
+You are an expert Startup Market Research Agent specializing in regional and industry analysis.
 
 Current Year:
 {datetime.now().year}
 
-Startup Idea:
-{idea}
-
-Description:
-{description}
+STARTUP CONTEXT:
+- Startup Idea: {idea}
+- Description: {description}
+- Industry / Domain: {industry}
+- Target Customer: {target_customer}
+- Target Country / Region: {target_country}
+- Startup Stage: {startup_stage}
+- Business Model: {business_model}
+- Key Features: {features_str}
 
 Verified Sources:
 {json.dumps(processed_sources, indent=2)}
 
-Analyze the startup idea using ONLY the verified sources provided above.
+Task:
+Analyze the startup idea using the verified sources provided above and your knowledge of {target_country}.
+IMPORTANT LOCATION & CURRENCY RULE:
+- Focus on market dynamics, demand, regulations, and competitors SPECIFIC to {target_country}.
+- Format all market size numbers and currency values using the local currency context for {target_country} (e.g. INR ₹ for India, USD $ for USA, GBP £ for UK, EUR € for Europe, etc.).
 
-Return ONLY valid JSON in exactly the following format.
+Return ONLY valid JSON in exactly the following format:
 
 {{
     "market_size": "",
     "growth_rate": "",
-    "industry": "",
+    "industry": "{industry}",
     "market_trends": [],
     "real_competitors": [],
     "confidence_score": 0,
@@ -153,19 +182,11 @@ Return ONLY valid JSON in exactly the following format.
 Rules:
 1. Return ONLY valid JSON. Do not include markdown, explanations, or code fences.
 2. "confidence_score" MUST be an integer between 0 and 100.
-3. Do NOT include "%" or any text in confidence_score.
-4. Calculate confidence based on:
-   - Source credibility
-   - Agreement across multiple sources
-   - Data recency
-   - Completeness of available information
-5. "verified_sources" MUST contain only real URLs from the provided Verified Sources.
-6. Prioritize information supported by the verified sources.
-7. Include only real, existing competitors that are relevant to the startup idea. Prefer competitors supported by the verified sources whenever possible.
-8. Do NOT invent companies, sources, market statistics, or trends.
-9. Market trends should be concise, factual, and directly supported by the available evidence.
-10. Market size should include available figures and growth rates only if supported by the verified sources.
-11.Return the market CAGR or annual growth rate in the growth_rate field if it is available from the verified sources.
+3. Do NOT include "%" or text in confidence_score.
+4. Calculate confidence based on data completeness and source quality for {target_country}.
+5. "verified_sources" MUST contain real URLs from the provided Verified Sources.
+6. "real_competitors" MUST prioritize existing companies operating in {target_country} or relevant globally.
+7. Include regional regulations or policies for {target_country} under market_trends if found.
 """
 
     # ======================================================
@@ -194,29 +215,22 @@ Rules:
 
 @app.get("/")
 def home():
-    """Return a basic health message for the web search agent.
-
-    Returns:
-        dict: A simple status message.
-    """
     return {"message": "Web Search Agent Running"}
 
 
 @app.post("/api/search-agent")
 def search_agent(request: IdeaRequest):
-    """Expose the web search agent through the FastAPI endpoint.
+    return run_web_search_agent(
+        idea=request.idea,
+        description=request.description,
+        industry=request.industry,
+        target_customer=request.targetCustomer,
+        target_country=request.targetCountry,
+        startup_stage=request.startupStage,
+        business_model=request.businessModel,
+        key_features=request.keyFeatures,
+    )
 
-    Args:
-        request: The incoming search request payload.
-
-    Returns:
-        dict: The market research payload generated by the agent.
-
-    Raises:
-        HTTPException: If the request is invalid or the analysis fails.
-    """
-
-    return run_web_search_agent(request.idea, request.description)
 
 
 # ==========================================================

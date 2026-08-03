@@ -8,8 +8,6 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard,
   PlusCircle,
-  Clock,
-  Settings,
   ChevronRight,
 } from 'lucide-react'
 import { C, FONT, RADIUS, ease } from './tokens'
@@ -26,8 +24,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard',      label: 'Dashboard',       icon: LayoutDashboard, to: '/results' },
   { id: 'new-validation', label: 'New Validation',  icon: PlusCircle,      to: '/' },
-  { id: 'history',        label: 'History',         icon: Clock,           to: '/history',  disabled: true },
-  { id: 'settings',       label: 'Settings',        icon: Settings,        to: '/settings', disabled: true },
 ]
 
 /* ═══════════════════════════════════════════════════════

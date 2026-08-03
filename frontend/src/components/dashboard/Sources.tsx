@@ -1,16 +1,19 @@
 /**
  * Sources.tsx
- * Section 6 — List of source URLs used during validation.
+ * Section 9 — Collapsed "References" section at the very bottom.
+ * Zero emojis.
  */
-import { motion } from 'framer-motion'
-import { ExternalLink, Link2 } from 'lucide-react'
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ExternalLink, Link2, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react'
 import { C, FONT, RADIUS, fadeUp } from './tokens'
+import { Badge } from './Badge'
+import { EmptyState } from './EmptyState'
 
 interface Props {
   sources: string[]
 }
 
-/* ── Extract domain from URL for display ── */
 function displayDomain(url: string): string {
   try {
     const u = new URL(url)
@@ -20,155 +23,153 @@ function displayDomain(url: string): string {
   }
 }
 
-/* ─── Single source row ─── */
-function SourceRow({ url, index }: { url: string; index: number }) {
-  const domain = displayDomain(url)
-
-  return (
-    <motion.div
-      {...fadeUp(0.06 + index * 0.04)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '14px',
-        padding: '14px 0',
-        borderBottom: `1px solid ${C.border}`,
-        fontFamily: FONT,
-      }}
-    >
-      {/* Index */}
-      <span
-        style={{
-          width: '24px',
-          fontFamily: FONT,
-          fontSize: '12px',
-          fontWeight: 700,
-          color: C.muted,
-          flexShrink: 0,
-          textAlign: 'right',
-        }}
-      >
-        {String(index + 1).padStart(2, '0')}
-      </span>
-
-      {/* Link icon */}
-      <div
-        style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: RADIUS.sm,
-          background: C.accentSoft,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Link2 size={14} color={C.accent} strokeWidth={2} />
-      </div>
-
-      {/* Domain + full URL */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: '13.5px', fontWeight: 700, color: C.primary, letterSpacing: '-0.01em', marginBottom: '2px' }}>
-          {domain}
-        </p>
-        <p
-          style={{
-            fontSize: '11.5px',
-            color: C.muted,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {url}
-        </p>
-      </div>
-
-      {/* Open link */}
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          fontSize: '12px',
-          fontWeight: 600,
-          color: C.accent,
-          textDecoration: 'none',
-          flexShrink: 0,
-          padding: '6px 12px',
-          border: `1.5px solid ${C.border}`,
-          borderRadius: RADIUS.sm,
-          transition: 'border-color 0.15s ease',
-          fontFamily: FONT,
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.borderColor = C.accent)}
-        onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}
-      >
-        Open <ExternalLink size={11} strokeWidth={2.5} />
-      </a>
-    </motion.div>
-  )
-}
-
-/* ═══════════════════════════════════════════════════════
-   SOURCES
-═══════════════════════════════════════════════════════ */
 export function Sources({ sources }: Props) {
-  return (
-    <section id="sources" style={{ fontFamily: FONT }}>
-      {/* Section header */}
-      <motion.div {...fadeUp(0.04)} style={{ marginBottom: '24px' }}>
-        <p
-          style={{
-            fontSize: '10.5px',
-            fontWeight: 700,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            color: C.accent,
-            marginBottom: '8px',
-          }}
-        >
-          Sources
-        </p>
-        <h2
-          style={{
-            fontFamily: FONT,
-            fontSize: 'clamp(20px, 2.4vw, 26px)',
-            fontWeight: 800,
-            color: C.primary,
-            letterSpacing: '-0.04em',
-            lineHeight: 1.2,
-          }}
-        >
-          {sources.length} source{sources.length !== 1 ? 's' : ''} reviewed
-        </h2>
-      </motion.div>
+  const [isOpen, setIsOpen] = useState(false)
 
-      {/* Sources card */}
+  return (
+    <section id="references" style={{ fontFamily: FONT, marginTop: '12px' }}>
+      {/* Collapsible References Header */}
       <motion.div
-        {...fadeUp(0.1)}
+        {...fadeUp(0.04)}
+        whileHover={{ y: -1 }}
+        onClick={() => setIsOpen(!isOpen)}
         style={{
           backgroundColor: C.surface,
           border: `1px solid ${C.border}`,
           borderRadius: RADIUS.xl,
-          padding: '8px 24px 0',
-          boxShadow: '0 4px 24px rgba(59,59,219,0.06)',
+          padding: '18px 24px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          userSelect: 'none',
+          transition: 'border-color 0.2s ease',
         }}
       >
-        {sources.length === 0 ? (
-          <p style={{ fontSize: '14px', color: C.muted, padding: '24px 0' }}>
-            No sources available yet.
-          </p>
-        ) : (
-          sources.map((url, i) => (
-            <SourceRow key={url + i} url={url} index={i} />
-          ))
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div
+            style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: RADIUS.md,
+              backgroundColor: C.accentSoft,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <ShieldCheck size={17} color={C.accent} strokeWidth={2.2} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 800, color: C.primary, margin: 0 }}>
+                References & Research Sources
+              </h3>
+              <Badge variant="neutral" size="sm">
+                {sources.length} Verified Sources
+              </Badge>
+            </div>
+            <p style={{ fontSize: '12px', color: C.secondary, margin: 0 }}>
+              Click to {isOpen ? 'collapse' : 'expand'} verified web sources and citation links
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            width: '30px',
+            height: '30px',
+            borderRadius: RADIUS.pill,
+            backgroundColor: '#f4f4fc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: C.accent,
+          }}
+        >
+          {isOpen ? <ChevronUp size={15} strokeWidth={2.5} /> : <ChevronDown size={15} strokeWidth={2.5} />}
+        </div>
       </motion.div>
+
+      {/* Collapsible Content */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{ overflow: 'hidden', marginTop: '10px' }}
+          >
+            <div
+              style={{
+                backgroundColor: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: RADIUS.xl,
+                padding: '12px 24px 8px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+              }}
+            >
+              {sources.length === 0 ? (
+                <EmptyState icon={ShieldCheck} title="No Sources Cited" message="No external references were cited for this run." />
+              ) : (
+                sources.map((url, i) => {
+                  const domain = displayDomain(url)
+                  return (
+                    <div
+                      key={url + i}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '14px',
+                        padding: '12px 0',
+                        borderBottom: i < sources.length - 1 ? `1px solid ${C.border}` : 'none',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <Link2 size={14} color={C.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: '13px', fontWeight: 800, color: C.primary, margin: 0 }}>
+                            {domain}
+                          </p>
+                          <p style={{ fontSize: '11px', color: C.muted, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '450px' }}>
+                            {url}
+                          </p>
+                        </div>
+                      </div>
+
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: C.accent,
+                          backgroundColor: '#ffffff',
+                          border: `1.5px solid ${C.border}`,
+                          borderRadius: RADIUS.md,
+                          padding: '4px 12px',
+                          textDecoration: 'none',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Open Link <ExternalLink size={11} strokeWidth={2.5} />
+                      </a>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   )
 }

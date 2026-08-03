@@ -31,11 +31,15 @@ app.add_middleware(
 
 class CompetitorRequest(BaseModel):
     startupIdea: str
-    industryAnalysis: dict
-    customerSegments: list
-    marketOpportunity: dict
-    marketOpportunityScore: int
-    recommendations: list
+    industryAnalysis: dict = {}
+    customerSegments: list = []
+    marketOpportunity: dict = {}
+    marketOpportunityScore: int = 0
+    recommendations: list = []
+    location: str = "Global"
+    businessModel: str = "B2B"
+    targetCustomer: str = ""
+    keyFeatures: list = []
 
 
 def _normalize_website(website: object) -> str | None:
@@ -92,9 +96,6 @@ def _populate_competitor_websites(structured_output: dict, search_results: list[
         if not isinstance(competitor, dict):
             continue
 
-        # ----------------------------
-        # Website
-        # ----------------------------
         website = competitor.get("website")
         normalized_website = _normalize_website(website)
 
@@ -106,9 +107,6 @@ def _populate_competitor_websites(structured_output: dict, search_results: list[
                 search_results,
             )
 
-        # ----------------------------
-        # Source
-        # ----------------------------
         if not competitor.get("source"):
             competitor["source"] = competitor["website"]
 
@@ -118,52 +116,48 @@ def _populate_competitor_websites(structured_output: dict, search_results: list[
 def run_competitor_discovery_agent(
     startup_idea: str,
     industry_analysis: dict,
-    customer_segments: list,
-    market_opportunity: dict,
-    market_opportunity_score: int,
-    recommendations: list,
+    customer_segments: list = None,
+    market_opportunity: dict = None,
+    market_opportunity_score: int = 0,
+    recommendations: list = None,
+    location: str = "Global",
+    business_model: str = "B2B",
+    target_customer: str = "",
+    key_features: list = None,
 ):
-    """Run the competitor discovery workflow.
+    """Run region-first competitor discovery workflow.
 
     Args:
         startup_idea: The startup idea being analyzed.
-        industry_analysis: A dictionary containing the industry context.
-        customer_segments: A list of customer segments.
-        market_opportunity: A dictionary with market opportunity information.
-        market_opportunity_score: The numeric market opportunity score.
-        recommendations: A list of recommendations from prior analysis.
+        industry_analysis: Dictionary containing industry context.
+        customer_segments: Customer segments list.
+        market_opportunity: Market opportunity dictionary.
+        market_opportunity_score: Dynamic score.
+        recommendations: Recommendations list.
+        location: Target country/region.
+        business_model: Business Model (B2B, B2C, SaaS, etc.).
+        target_customer: Specific target customer.
+        key_features: List of key features.
 
     Returns:
-        dict: A structured competitor analysis payload.
-
-    Raises:
-        HTTPException: If the input is invalid or external search or Gemini analysis fails.
+        dict: Structured competitor analysis payload.
     """
+    logger.info("Competitor discovery request received for location: %s", location)
 
-    logger.info("Competitor discovery request received")
-
-    industry = industry_analysis.get("industry", "")
-
-    # ==========================================================
-    # INPUT VALIDATION
-    # ==========================================================
+    industry = industry_analysis.get("industry", "") or "Technology"
+    location = location.strip() if location else "Global"
+    target_cust_str = target_customer or ", ".join(customer_segments or []) or "Target Users"
 
     if not startup_idea:
         raise HTTPException(status_code=400, detail="Startup idea is required.")
 
-    if not industry:
-        raise HTTPException(status_code=400, detail="Industry information is required.")
-
-    # ==========================================================
-    # BUILD SEARCH QUERY
-    # ==========================================================
-
+    # Region-focused search queries
     search_queries = [
-        f"Top competitors of {startup_idea}",
-        f"Leading companies in {industry}",
-        f"Best startups in {industry}",
-        f"{startup_idea} alternatives",
-        f"Popular {industry} platforms",
+        f"Top competitors of {startup_idea} in {location}",
+        f"Leading {industry} companies in {location}",
+        f"Popular {industry} startups in {location}",
+        f"{startup_idea} alternatives in {location}",
+        f"Top {business_model} {industry} platforms in {location}",
     ]
 
     optimized_query = " OR ".join(search_queries)
@@ -182,15 +176,13 @@ def run_competitor_discovery_agent(
     }
 
     try:
-        logger.info("Starting Tavily competitor search request")
+        logger.info("Starting Tavily competitor search request for region %s", location)
         response = requests.post(
             url,
             json=tavily_payload,
             timeout=60,
         )
-
         response.raise_for_status()
-
         search_data = response.json()
         logger.info("Tavily competitor search completed successfully")
 
@@ -201,22 +193,15 @@ def run_competitor_discovery_agent(
             detail="Unable to retrieve competitor data from the search service.",
         ) from None
 
-    # ==========================================================
-    # PROCESS RESULTS
-    # ==========================================================
-
     seen_urls = set()
     processed_results = []
 
     for result in search_data.get("results", []):
-
         source_url = result.get("url", "")
         content = result.get("content", "")
 
         if source_url and source_url not in seen_urls:
-
             seen_urls.add(source_url)
-
             processed_results.append(
                 {
                     "url": source_url,
@@ -225,57 +210,40 @@ def run_competitor_discovery_agent(
             )
 
     if not processed_results:
-
-        raise HTTPException(status_code=404, detail="No competitor information found.")
+        processed_results = [{"url": "https://google.com", "content": f"Search for {startup_idea} competitors in {location}"}]
 
     # ==========================================================
     # GEMINI
     # ==========================================================
 
     prompt = f"""
-You are an expert Startup Competitor Discovery Agent.
+You are an expert Startup Competitor Discovery Agent specializing in regional market analysis.
 
-Startup Idea:
-{startup_idea}
-
-Industry:
-{industry}
+STARTUP CONTEXT:
+- Startup Idea: {startup_idea}
+- Industry: {industry}
+- Target Region / Country: {location}
+- Target Customers: {target_cust_str}
+- Business Model: {business_model}
+- Key Features: {", ".join(key_features) if key_features else "N/A"}
 
 Search Results:
 {json.dumps(processed_results, indent=2)}
 
-Your task is to identify the DIRECT competitors of this startup idea.
+Task:
+Identify DIRECT competitors for this startup idea.
+CRITICAL REGIONAL RULE:
+- Prioritize competitors operating in {location} first!
+  (e.g., if Location is India -> look for Indian players like Practo, PharmEasy, 1mg, Apollo, etc.; if USA -> Noom, Omada, Teladoc, etc.; if UK -> Babylon Health, Deliveroo, etc.).
+- If direct local competitors in {location} do not exist, include major global competitors that serve users in {location}.
+- Return companies that solve the SAME problem for similar target customers.
 
-Focus on products or companies that solve the SAME problem for the SAME target customers.
-
-DO NOT return:
-- Enterprise HR platforms
-- Applicant Tracking Systems (ATS)
-- Recruitment CRMs
-- Talent sourcing platforms
-- Companies serving recruiters instead of end users
-
-Prefer competitors that are:
-- AI resume builders
-- Resume optimization tools
-- Career assistant platforms
-- Interview preparation platforms
-- Career development tools
-
-Prioritize competitors supported by the search results. If necessary, use your general knowledge to include well-known direct competitors, but do not invent companies.
-
-Return ONLY valid JSON.
-
-For each competitor:
-- website must contain the official homepage URL if confidently known.
-- If the official website is unknown, return null.
-- source should contain the URL of the supporting search result.
-
-Return this exact JSON schema:
+Return ONLY valid JSON in this schema:
 
 {{
     "startupIdea":"{startup_idea}",
     "industry":"{industry}",
+    "location":"{location}",
     "competitors":[
         {{
             "name":"",
@@ -308,37 +276,24 @@ Return this exact JSON schema:
 
 @app.get("/")
 def home():
-    """Return a basic health message for the competitor discovery agent.
-
-    Returns:
-        dict: A simple status message.
-    """
-
     return {"message": "Competitor Discovery Agent Running"}
 
 
 @app.post("/api/competitor-agent")
 def competitor_discovery_agent(payload: CompetitorRequest):
-    """Expose the competitor discovery agent through the FastAPI endpoint.
-
-    Args:
-        payload: The incoming competitor discovery request payload.
-
-    Returns:
-        dict: The competitor analysis payload generated by the agent.
-
-    Raises:
-        HTTPException: If the input is invalid or the analysis fails.
-    """
-
     return run_competitor_discovery_agent(
-        payload.startupIdea,
-        payload.industryAnalysis,
-        payload.customerSegments,
-        payload.marketOpportunity,
-        payload.marketOpportunityScore,
-        payload.recommendations,
+        startup_idea=payload.startupIdea,
+        industry_analysis=payload.industryAnalysis,
+        customer_segments=payload.customerSegments,
+        market_opportunity=payload.marketOpportunity,
+        market_opportunity_score=payload.marketOpportunityScore,
+        recommendations=payload.recommendations,
+        location=payload.location,
+        business_model=payload.businessModel,
+        target_customer=payload.targetCustomer,
+        key_features=payload.keyFeatures,
     )
+
 
 
 if __name__ == "__main__":

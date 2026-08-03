@@ -44,9 +44,13 @@ class Competitor(BaseModel):
 
 class ComparisonRequest(BaseModel):
     startupIdea: str
-    description: str
-    industry: str
-    competitors: List[Optional[Competitor]]
+    description: str = ""
+    industry: str = ""
+    competitors: List[Optional[Competitor]] = []
+    location: str = "Global"
+    businessModel: str = "B2B"
+    targetCustomer: str = ""
+    keyFeatures: List[str] = []
 
 
 def _parse_json_payload(content: str, default=None):
@@ -377,8 +381,6 @@ def normalize_feature_list(features: List[str]) -> List[str]:
     Returns:
         List[str]: A normalized list of lowercase feature names with duplicates removed.
     """
-    """Normalize feature names for reliable comparison."""
-
     if features is None:
         return []
     if isinstance(features, str):
@@ -396,208 +398,97 @@ def normalize_feature_list(features: List[str]) -> List[str]:
         cleaned_feature = feature.strip().lower()
         if cleaned_feature and cleaned_feature not in seen_features:
             normalized_features.append(cleaned_feature)
-            seen_features.add(cleaned_feature)
 
     return normalized_features
 
 
-def compare_features(startup_features: List[str], competitors: List[Competitor]):
-    """Compare startup features against each competitor's features.
-
-    Args:
-        startup_features: The startup's feature list.
-        competitors: A list of competitor objects to compare against.
-
-    Returns:
-        list: A list of comparison results for each competitor.
-    """
-    """Compare startup features against each competitor's features."""
-
-    comparison_results = []
-    normalized_startup_features = normalize_feature_list(startup_features)
-
-    for competitor in competitors:
-        normalized_competitor = _normalize_competitor(competitor)
-        normalized_competitor_features = normalized_competitor["key_features"]
-
-        try:
-            if not GEMINI_API_KEY:
-                raise ValueError("GEMINI_API_KEY is not configured.")
-
-            prompt = f"""
-You are an expert product analyst.
-
-Startup features:
-{json.dumps(normalized_startup_features)}
-
-Competitor features:
-{json.dumps(normalized_competitor_features)}
-
-Identify semantic matches between the two lists.
-Treat features with similar meaning as matches, for example:
-"AI Resume Writing" and "AI-powered Resume Creation" should be considered the same.
-
-Return ONLY valid JSON in this exact format:
-{{
-  "common_features": ["feature 1", "feature 2"],
-  "startup_unique_features": ["feature 3"],
-  "competitor_unique_features": ["feature 4"]
-}}
-
-Do not include explanations.
-"""
-
-            content = _call_gemini(prompt)
-            parsed_result = _parse_json_payload(content, {})
-
-            if not isinstance(parsed_result, dict):
-                raise ValueError("Gemini returned an invalid comparison payload.")
-
-            common_features = normalize_feature_list(
-                parsed_result.get("common_features", [])
-            )
-            unique_startup_features = normalize_feature_list(
-                parsed_result.get("startup_unique_features", [])
-            )
-            unique_competitor_features = normalize_feature_list(
-                parsed_result.get("competitor_unique_features", [])
-            )
-
-        except (ValueError, TypeError, AttributeError, KeyError):
-            startup_set = set(normalized_startup_features)
-            competitor_set = set(normalized_competitor_features)
-
-            common_features = list(startup_set & competitor_set)
-            unique_startup_features = list(startup_set - competitor_set)
-            unique_competitor_features = list(competitor_set - startup_set)
-
-        comparison_results.append(
-            {
-                "competitor": normalized_competitor["name"],
-                "common_features": common_features,
-                "startup_unique_features": unique_startup_features,
-                "competitor_unique_features": unique_competitor_features,
-            }
-        )
-
-    return comparison_results
-
-
 def run_comparison_agent(
-    startup_idea: str, description: str, industry: str, competitors: list
-):
-    """Run the comparison analysis workflow.
+    startup_idea: str,
+    description: str = "",
+    industry: str = "",
+    competitors: List[dict] = None,
+    location: str = "Global",
+    business_model: str = "B2B",
+    target_customer: str = "",
+    key_features: List[str] = None,
+) -> dict:
+    """Run the comparison and insight generation workflow.
 
     Args:
-        startup_idea: The startup idea to evaluate.
+        startup_idea: The startup idea being analyzed.
         description: A description of the startup idea.
-        industry: The industry associated with the startup.
-        competitors: A list of competitor payloads to compare against.
+        industry: Industry sector.
+        competitors: List of competitor dicts or Competitor objects.
+        location: Target country or region.
+        business_model: Business model.
+        target_customer: Target customer segment.
+        key_features: List of key features.
 
     Returns:
         dict: A structured comparison response with business insights.
-
-    Raises:
-        HTTPException: If the input is invalid or the comparison workflow fails.
     """
-    logger.info("Comparison agent request received")
     try:
-        startup = startup_idea.strip()
-        description = description.strip()
-        industry = industry.strip()
-
-        logger.info("Received startup idea: %s", startup)
-        logger.info("Competitors received: %s", len(competitors))
-        logger.info("Starting comparison processing")
+        startup = startup_idea.strip() if startup_idea else ""
+        description = description.strip() if description else startup
+        industry = industry.strip() if industry else "Technology"
+        competitors = competitors or []
 
         normalized_competitors = [
             _normalize_competitor(competitor) for competitor in competitors
         ]
 
         if not startup:
-            logger.warning("Validation failed: startup idea is empty")
-            raise HTTPException(
-                status_code=400,
-                detail="Startup idea cannot be empty.",
-            )
-
-        if not description:
-            logger.warning("Validation failed: startup description is empty")
-            raise HTTPException(
-                status_code=400,
-                detail="Startup description cannot be empty.",
-            )
-
-        if not industry:
-            logger.warning("Validation failed: industry is empty")
-            raise HTTPException(
-                status_code=400,
-                detail="Industry cannot be empty.",
-            )
-
-        if len(competitors) == 0:
-            logger.warning("Validation failed: no competitors provided")
-            raise HTTPException(
-                status_code=400,
-                detail="At least one competitor is required.",
-            )
+            raise HTTPException(status_code=400, detail="Startup idea cannot be empty.")
 
         analysis_payload = _generate_single_analysis_payload(
             startup,
             description,
             industry,
-            [
-                _normalize_competitor(competitor)
-                for competitor in normalized_competitors
-            ],
+            normalized_competitors,
         )
 
-        startup_features = analysis_payload.get("startup_features", [])
-        comparison = analysis_payload.get("feature_comparison", [])
-        similarity = analysis_payload.get("similarity_scores", [])
-        gaps = analysis_payload.get("market_gaps", [])
-        insights = analysis_payload.get("business_insights", _default_insights())
-
-        response_payload = {
+        return {
             "status": "success",
             "startup": startup,
             "description": description,
             "industry": industry,
-            "startup_features": startup_features,
-            "comparison": comparison,
-            "similarity_scores": similarity,
-            "market_gaps": gaps,
-            "business_insights": insights,
+            "location": location,
+            "businessModel": business_model,
+            "targetCustomer": target_customer,
+            "keyFeatures": key_features or [],
+            "startup_features": analysis_payload.get("startup_features", []),
+            "comparison": analysis_payload.get("comparison", []),
+            "similarity_scores": analysis_payload.get("similarity_scores", []),
+            "market_gaps": analysis_payload.get("market_gaps", []),
+            "business_insights": analysis_payload.get("business_insights", {}),
         }
-        logger.info(
-            "Comparison agent completed successfully for startup idea: %s", startup
-        )
-        return response_payload
+
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Unexpected error while processing comparison request")
+    except Exception as exc:
+        logger.exception("Unexpected error in comparison agent")
         raise HTTPException(
             status_code=500,
-            detail="An unexpected error occurred while processing the comparison request.",
+            detail=f"An unexpected error occurred: {str(exc)}",
         ) from None
 
 
+@app.get("/")
+def home():
+    return {"message": "Comparison Agent Running"}
+
+
 @app.post("/api/comparison-agent")
-def comparison_agent(payload: ComparisonRequest):
-    """Expose the comparison agent through the FastAPI endpoint.
-
-    Args:
-        payload: The incoming comparison request payload.
-
-    Returns:
-        dict: The comparison response generated by the agent.
-
-    Raises:
-        HTTPException: If the request is invalid or the comparison fails.
-    """
+def analyze_comparison(request: ComparisonRequest):
     return run_comparison_agent(
-        payload.startupIdea, payload.description, payload.industry, payload.competitors
+        startup_idea=request.startupIdea,
+        description=request.description,
+        industry=request.industry,
+        competitors=request.competitors,
+        location=request.location,
+        business_model=request.businessModel,
+        target_customer=request.targetCustomer,
+        key_features=request.keyFeatures,
     )
 
 

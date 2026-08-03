@@ -1,8 +1,6 @@
 /**
  * types/dashboard.ts
- * All shared TypeScript types for the Results Dashboard.
- * Shape is designed to match the backend API payload exactly —
- * swap placeholders for real API data when integrating.
+ * All TypeScript types for the Executive AI Business Intelligence Platform.
  */
 
 export type AgentStatus = 'completed' | 'running' | 'pending' | 'failed'
@@ -11,9 +9,7 @@ export interface AgentResult {
   id: string
   name: string
   status: AgentStatus
-  /** One-line summary visible in the pipeline card */
   summary: string
-  /** Full detail text — shown in expanded view (future) */
   detail: string
 }
 
@@ -23,6 +19,14 @@ export interface Competitor {
   strengths: string[]
   weaknesses: string[]
   website?: string
+  country?: string
+  similarity?: number
+  pricingModel?: string
+  targetAudience?: string
+  relevanceReason?: string
+  differentiation?: string
+  keyOpportunity?: string
+  biggestThreat?: string
 }
 
 export interface MarketData {
@@ -30,24 +34,103 @@ export interface MarketData {
   growthRate: string
   industry: string
   trends: string[]
+  tam?: string
+  sam?: string
+  som?: string
+  currency?: string
+}
+
+export interface ScoreDimension {
+  id: string
+  title: string
+  score: number
+  explanation: string
+  whyAssigned?: string
+  whatIncreased?: string
+  whatReduced?: string
+  improvementSuggestion?: string
+}
+
+export interface SWOTData {
+  strengths: string[]
+  weaknesses: string[]
+  opportunities: string[]
+  threats: string[]
+}
+
+export interface MarketInsightsData {
+  trends: string[]
+  painPoints: string[]
+  growthDrivers: string[]
+  risks: string[]
+  regulations: string[]
+  investmentOutlook: string
+  whyAttractive?: string
+  adoptionBarriers?: string[]
+}
+
+export interface CategorizedRecommendation {
+  category:
+    | 'Immediate Actions'
+    | 'Product Improvements'
+    | 'Business Strategy'
+    | 'Go-to-Market Strategy'
+    | 'Fundraising Readiness'
+    | 'Long-Term Growth'
+    | 'Quick Wins'
+    | 'High Impact Improvements'
+    | 'Long-term Strategy'
+    | 'Investor Advice'
+  priority: 'High' | 'Medium' | 'Strategic'
+  impact?: 'High Impact' | 'Medium Impact' | 'Transformational'
+  text: string
+  reasoning?: string
+}
+
+export interface InvestorPerspectiveData {
+  interested: boolean
+  verdictLabel: string
+  evidence: string[]
+  concerns: string[]
+}
+
+export interface RiskItem {
+  type: 'Market Risk' | 'Technical Risk' | 'Execution Risk' | 'Financial Risk' | 'Regulatory Risk'
+  level: 'Low' | 'Medium' | 'High'
+  explanation: string
+}
+
+export interface FinalVerdictData {
+  decision: 'Should Proceed' | 'Proceed with Improvements' | 'Needs Significant Refinement' | 'Not Recommended Yet'
+  rationale: string
 }
 
 export interface ValidationResult {
-  /** The original startup idea string */
   idea: string
-  /** Optional longer description submitted by the user */
   description?: string
-  /** ISO date string — e.g. "2026-08-02T06:13:00Z" */
   createdAt: string
-  /** 0 – 100 */
   validationScore: number
-  /** Human-readable verdict */
   status: 'Strong' | 'Moderate' | 'Weak' | 'Needs Work'
-  /** 2–4 sentence executive summary */
+  verdict?: 'Excellent Opportunity' | 'Promising but Competitive' | 'Needs Refinement' | 'High Risk'
   executiveSummary: string
   agents: AgentResult[]
   market: MarketData
   competitors: Competitor[]
   recommendations: string[]
   sources: string[]
+  // Enriched BI Platform fields
+  scoreBreakdown?: ScoreDimension[]
+  swot?: SWOTData
+  insights?: MarketInsightsData
+  categorizedRecommendations?: CategorizedRecommendation[]
+  investorPerspective?: InvestorPerspectiveData
+  riskAnalysis?: RiskItem[]
+  finalVerdict?: FinalVerdictData
+  enrichedCompetitors?: Competitor[]
+  industry?: string
+  targetCustomer?: string
+  targetCountry?: string
+  startupStage?: string
+  businessModel?: string
+  keyFeatures?: string[]
 }

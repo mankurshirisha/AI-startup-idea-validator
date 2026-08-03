@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useInView, useMotionValue, useTransform, useSpring } from 'framer-motion'
-import { ArrowRight, Play, TrendingUp, Users, BarChart3, Globe, FileText, GitCompare } from 'lucide-react'
+import { ArrowRight, Workflow, TrendingUp, Users, BarChart3, Globe, FileText, GitCompare } from 'lucide-react'
 
 /* ─── Transition presets ─────────────────────────────── */
 const ease = [0.25, 0.1, 0.25, 1] as const
@@ -126,11 +126,20 @@ function FloatCard({
    MAIN LANDING PAGE
 ═══════════════════════════════════════════════════════ */
 export default function LandingPage() {
+
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
   const [idea, setIdea] = useState('')
   const [description, setDescription] = useState('')
-  const [focusedField, setFocusedField] = useState<'idea' | 'desc' | null>(null)
+  const [selectedIndustry, setSelectedIndustry] = useState('')
+  const [customIndustry, setCustomIndustry] = useState('')
+  const [targetCustomer, setTargetCustomer] = useState('')
+  const [targetCountry, setTargetCountry] = useState('India')
+  const [startupStage, setStartupStage] = useState('')
+  const [businessModel, setBusinessModel] = useState('')
+  const [keyFeatures, setKeyFeatures] = useState('')
+  const [focusedField, setFocusedField] = useState<string | null>(null)
+
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -175,8 +184,8 @@ export default function LandingPage() {
           left: 0,
           right: 0,
           zIndex: 100,
-          backgroundColor: scrolled ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.85)',
-          borderBottom: `1px solid ${scrolled ? C.border : 'transparent'}`,
+          backgroundColor: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.85)',
+          borderBottom: `1px solid ${C.border}`,
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           transition: 'background-color 0.3s ease, border-color 0.3s ease',
@@ -186,8 +195,8 @@ export default function LandingPage() {
           style={{
             maxWidth: '1200px',
             margin: '0 auto',
-            padding: '0 40px',
-            height: '70px',
+            padding: '0 32px',
+            height: '64px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -213,34 +222,7 @@ export default function LandingPage() {
             </span>
           </a>
 
-          {/* Nav links — centered */}
-          <nav
-            id="nav-links"
-            style={{ display: 'flex', alignItems: 'center', gap: '40px' }}
-            className="hidden md:flex"
-          >
-            {(['Features', 'Workflow', 'Report Preview', 'About'] as const).map((label) => (
-              <a
-                key={label}
-                href={`#${label.toLowerCase().replace(/\s+/g, '-')}`}
-                style={{
-                  fontSize: '14.5px',
-                  fontWeight: 500,
-                  color: C.primary,
-                  textDecoration: 'none',
-                  opacity: 0.6,
-                  transition: 'opacity 0.2s ease',
-                  letterSpacing: '-0.01em',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
-              >
-                {label}
-              </a>
-            ))}
-          </nav>
-
-          {/* CTA button — rounded white style matching reference */}
+          {/* Action CTA */}
           <motion.a
             id="nav-cta"
             href="#validate"
@@ -255,8 +237,8 @@ export default function LandingPage() {
               textDecoration: 'none',
               border: 'none',
               borderRadius: '100px',
-              padding: '10px 22px',
-              fontSize: '14px',
+              padding: '9px 20px',
+              fontSize: '13.5px',
               fontWeight: 600,
               cursor: 'pointer',
               letterSpacing: '-0.01em',
@@ -445,11 +427,12 @@ export default function LandingPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    flexShrink: 0,
                   }}
                 >
-                  <Play size={11} fill="#3b3bdb" color="#3b3bdb" strokeWidth={0} style={{ marginLeft: '2px' }} />
+                  <Workflow size={14} color="#3b3bdb" strokeWidth={2.2} />
                 </span>
-                Watch video
+                View AI Workflow
               </motion.a>
             </motion.div>
           </div>
@@ -583,7 +566,7 @@ export default function LandingPage() {
                 marginBottom: '20px',
               }}
             >
-              Five specialized agents.<br />One complete validation.
+              Four specialized agents.<br />One complete validation.
             </h2>
             <p
               style={{
@@ -593,9 +576,9 @@ export default function LandingPage() {
                 maxWidth: '480px',
               }}
             >
-              BeforeBeta runs a pipeline of five AI agents in sequence. Each agent
+              BeforeBeta runs a pipeline of four AI agents in sequence. Each agent
               handles a distinct part of the validation — from market research to
-              the final report.
+              competitive benchmarking.
             </p>
           </div>
 
@@ -635,13 +618,6 @@ export default function LandingPage() {
                 icon: GitCompare,
                 title: 'Comparison Agent',
                 desc: 'Compares strengths, weaknesses, opportunities, and gaps against what already exists.',
-              },
-              {
-                id: 'agent-report',
-                step: '05',
-                icon: FileText,
-                title: 'Report Generator Agent',
-                desc: 'Compiles all findings into a structured startup validation report.',
               },
             ].map((agent) => {
               const Icon = agent.icon
@@ -798,139 +774,503 @@ export default function LandingPage() {
               boxShadow: '0 8px 40px rgba(59,59,219,0.08)',
             }}
           >
-            {/* Idea input */}
+            {/* ══════════════════════════════════════════
+                SECTION 1: REQUIRED INFORMATION
+            ══════════════════════════════════════════ */}
             <div style={{ marginBottom: '24px' }}>
-              <label
-                htmlFor="startup-idea"
-                style={{
-                  display: 'block',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  color: C.primary,
-                  letterSpacing: '-0.01em',
-                  marginBottom: '10px',
-                }}
-              >
-                Startup Idea
-              </label>
-              <input
-                id="startup-idea"
-                type="text"
-                value={idea}
-                onChange={(e) => setIdea(e.target.value)}
-                onFocus={() => setFocusedField('idea')}
-                onBlur={() => setFocusedField(null)}
-                placeholder="e.g. A marketplace for vintage furniture rentals"
-                style={{
-                  width: '100%',
-                  padding: '13px 16px',
-                  fontSize: '15px',
-                  color: C.primary,
-                  backgroundColor: '#fafafe',
-                  border: `1.5px solid ${focusedField === 'idea' ? C.accent : C.border}`,
-                  borderRadius: '12px',
-                  outline: 'none',
-                  transition: 'border-color 0.2s ease',
-                  fontFamily: "'DM Sans', sans-serif",
-                }}
-              />
-            </div>
-
-            {/* Description textarea */}
-            <div style={{ marginBottom: '32px' }}>
-              <label
-                htmlFor="startup-description"
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: '6px',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  color: C.primary,
-                  letterSpacing: '-0.01em',
-                  marginBottom: '10px',
-                }}
-              >
-                Description
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                 <span
                   style={{
-                    fontWeight: 400,
-                    color: C.muted,
-                    fontSize: '12px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: C.accent,
+                    backgroundColor: '#3b3bdb12',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
                   }}
                 >
-                  optional
+                  Required Information
                 </span>
-              </label>
-              <textarea
-                id="startup-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                onFocus={() => setFocusedField('desc')}
-                onBlur={() => setFocusedField(null)}
-                placeholder="What problem are you solving? Who is your target customer? What makes your solution unique?"
-                rows={5}
-                style={{
-                  width: '100%',
-                  padding: '13px 16px',
-                  fontSize: '15px',
-                  color: C.primary,
-                  backgroundColor: '#fafafe',
-                  border: `1.5px solid ${focusedField === 'desc' ? C.accent : C.border}`,
-                  borderRadius: '12px',
-                  outline: 'none',
-                  lineHeight: '1.65',
-                  transition: 'border-color 0.2s ease',
-                  fontFamily: "'DM Sans', sans-serif",
-                  resize: 'vertical',
-                }}
-              />
-            </div>
+              </div>
 
-            {/* Validate button */}
-            <motion.button
-              id="validate-btn"
-              onClick={() => {
-                if (!idea.trim()) return
-                navigate('/loading', { state: { idea, description } })
-              }}
-              whileHover={{ scale: 1.015, y: -2, boxShadow: '0 10px 32px rgba(59,59,219,0.30)' }}
-              whileTap={{ scale: 0.97 }}
-              style={{
-                width: '100%',
-                padding: '15px 24px',
-                backgroundColor: idea.trim() ? C.accent : '#9090b0',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '15.5px',
-                fontWeight: 700,
-                cursor: idea.trim() ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                letterSpacing: '-0.02em',
-                fontFamily: "'DM Sans', sans-serif",
-                transition: 'background-color 0.2s ease',
-              }}
-            >
-              Validate My Startup
-              <ArrowRight size={16} strokeWidth={2.5} />
-            </motion.button>
+              {/* 1. Idea input (Required) */}
+              <div style={{ marginBottom: '20px' }}>
+                <label
+                  htmlFor="startup-idea"
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: C.primary,
+                    letterSpacing: '-0.01em',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Startup Idea *
+                </label>
+                <input
+                  id="startup-idea"
+                  type="text"
+                  value={idea}
+                  onChange={(e) => setIdea(e.target.value)}
+                  onFocus={() => setFocusedField('idea')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="e.g. AI Meal Planner for Diabetic Patients"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: '14.5px',
+                    color: C.primary,
+                    backgroundColor: '#fafafe',
+                    border: `1.5px solid ${focusedField === 'idea' ? C.accent : C.border}`,
+                    borderRadius: '12px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s ease',
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}
+                />
+              </div>
 
-            {/* Disclaimer */}
-            <p
-              style={{
-                textAlign: 'center',
-                fontSize: '12px',
-                color: C.muted,
-                marginTop: '16px',
-              }}
-            >
-              Free to try · No credit card required · Results in under 60 seconds
-            </p>
+              {/* 2. Description (Required) */}
+              <div style={{ marginBottom: '20px' }}>
+                <label
+                  htmlFor="startup-description"
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: C.primary,
+                    letterSpacing: '-0.01em',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Description *
+                </label>
+                <textarea
+                  id="startup-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  onFocus={() => setFocusedField('desc')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="What problem are you solving? What makes your solution unique?"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: '14.5px',
+                    color: C.primary,
+                    backgroundColor: '#fafafe',
+                    border: `1.5px solid ${focusedField === 'desc' ? C.accent : C.border}`,
+                    borderRadius: '12px',
+                    outline: 'none',
+                    lineHeight: '1.6',
+                    transition: 'border-color 0.2s ease',
+                    fontFamily: "'DM Sans', sans-serif",
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+
+              {/* 2-Column Grid for Industry & Target Customer */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                {/* 3. Industry / Domain (Required Searchable Dropdown) */}
+                <div>
+                  <label
+                    htmlFor="startup-industry"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: C.primary,
+                      letterSpacing: '-0.01em',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Industry / Domain *
+                  </label>
+                  <select
+                    id="startup-industry"
+                    value={selectedIndustry}
+                    onChange={(e) => setSelectedIndustry(e.target.value)}
+                    onFocus={() => setFocusedField('industry')}
+                    onBlur={() => setFocusedField(null)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      fontSize: '14.5px',
+                      color: selectedIndustry ? C.primary : C.muted,
+                      backgroundColor: '#fafafe',
+                      border: `1.5px solid ${focusedField === 'industry' ? C.accent : C.border}`,
+                      borderRadius: '12px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    <option value="" disabled hidden>
+                      Select Industry
+                    </option>
+                    <option value="AI & Machine Learning">AI & Machine Learning</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="FinTech">FinTech</option>
+                    <option value="EdTech">EdTech</option>
+                    <option value="CleanTech">CleanTech</option>
+                    <option value="AgriTech">AgriTech</option>
+                    <option value="E-commerce">E-commerce</option>
+                    <option value="Logistics">Logistics</option>
+                    <option value="Cybersecurity">Cybersecurity</option>
+                    <option value="Real Estate">Real Estate</option>
+                    <option value="FoodTech">FoodTech</option>
+                    <option value="Travel">Travel</option>
+                    <option value="Manufacturing">Manufacturing</option>
+                    <option value="SaaS">SaaS</option>
+                    <option value="Other">Other</option>
+                  </select>
+
+                  {/* Empty state hint if Industry is not selected */}
+                  {!selectedIndustry && (
+                    <p style={{ fontSize: '12px', color: C.accent, marginTop: '6px', fontWeight: 500 }}>
+                      Choose an industry to receive more accurate market insights.
+                    </p>
+                  )}
+
+                  {/* Render text input if 'Other' is selected */}
+                  {selectedIndustry === 'Other' && (
+                    <input
+                      type="text"
+                      value={customIndustry}
+                      onChange={(e) => setCustomIndustry(e.target.value)}
+                      onFocus={() => setFocusedField('customIndustry')}
+                      onBlur={() => setFocusedField(null)}
+                      placeholder="Specify custom industry..."
+                      style={{
+                        marginTop: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        fontSize: '14px',
+                        color: C.primary,
+                        backgroundColor: '#fafafe',
+                        border: `1.5px solid ${focusedField === 'customIndustry' ? C.accent : C.border}`,
+                        borderRadius: '10px',
+                        outline: 'none',
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* 4. Target Customer (Required) */}
+                <div>
+                  <label
+                    htmlFor="startup-customer"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: C.primary,
+                      letterSpacing: '-0.01em',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Target Customer *
+                  </label>
+                  <input
+                    id="startup-customer"
+                    type="text"
+                    value={targetCustomer}
+                    onChange={(e) => setTargetCustomer(e.target.value)}
+                    onFocus={() => setFocusedField('customer')}
+                    onBlur={() => setFocusedField(null)}
+                    placeholder="e.g. Students, Doctors, Small Businesses, Farmers, HR Teams"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      fontSize: '14.5px',
+                      color: C.primary,
+                      backgroundColor: '#fafafe',
+                      border: `1.5px solid ${focusedField === 'customer' ? C.accent : C.border}`,
+                      borderRadius: '12px',
+                      outline: 'none',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  />
+                </div>
+              </div>
+
+                {/* 5. Target Country (Required Dropdown) */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label
+                    htmlFor="target-country"
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: C.primary,
+                      letterSpacing: '-0.01em',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Target Country *
+                  </label>
+                  <select
+                    id="target-country"
+                    value={targetCountry}
+                    onChange={(e) => setTargetCountry(e.target.value)}
+                    onFocus={() => setFocusedField('country')}
+                    onBlur={() => setFocusedField(null)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      fontSize: '14.5px',
+                      color: C.primary,
+                      backgroundColor: '#fafafe',
+                      border: `1.5px solid ${focusedField === 'country' ? C.accent : C.border}`,
+                      borderRadius: '12px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    <option value="India">India</option>
+                    <option value="USA">United States</option>
+                    <option value="United Kingdom">United Kingdom</option>
+                    <option value="Canada">Canada</option>
+                    <option value="Germany">Germany</option>
+                    <option value="Singapore">Singapore</option>
+                    <option value="Global">Global</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* ══════════════════════════════════════════
+                  SUBTLE SECTION DIVIDER
+              ══════════════════════════════════════════ */}
+              <div style={{ height: '1px', backgroundColor: '#e8e8f4', margin: '24px 0' }} />
+
+              {/* ══════════════════════════════════════════
+                  SECTION 2: ADDITIONAL DETAILS (OPTIONAL)
+              ══════════════════════════════════════════ */}
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: C.secondary,
+                      backgroundColor: '#f0f0f8',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    Additional Details (Optional)
+                  </span>
+                </div>
+
+                {/* 2-Column Grid for Startup Stage & Business Model */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                  {/* 6. Startup Stage */}
+                  <div>
+                    <label
+                      htmlFor="startup-stage"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: '4px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: C.primary,
+                        letterSpacing: '-0.01em',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Startup Stage
+                      <span style={{ fontWeight: 400, color: C.muted, fontSize: '11px' }}>(optional)</span>
+                    </label>
+                    <select
+                      id="startup-stage"
+                      value={startupStage}
+                      onChange={(e) => setStartupStage(e.target.value)}
+                      onFocus={() => setFocusedField('stage')}
+                      onBlur={() => setFocusedField(null)}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        fontSize: '14.5px',
+                        color: startupStage ? C.primary : C.muted,
+                        backgroundColor: '#fafafe',
+                        border: `1.5px solid ${focusedField === 'stage' ? C.accent : C.border}`,
+                        borderRadius: '12px',
+                        outline: 'none',
+                        cursor: 'pointer',
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    >
+                      <option value="" disabled hidden>
+                        Select Startup Stage
+                      </option>
+                      <option value="Idea">Idea</option>
+                      <option value="MVP">MVP</option>
+                      <option value="Beta">Beta</option>
+                      <option value="Launched">Launched</option>
+                    </select>
+                  </div>
+
+                  {/* 7. Business Model */}
+                  <div>
+                    <label
+                      htmlFor="business-model"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: '4px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: C.primary,
+                        letterSpacing: '-0.01em',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Business Model
+                      <span style={{ fontWeight: 400, color: C.muted, fontSize: '11px' }}>(optional)</span>
+                    </label>
+                    <select
+                      id="business-model"
+                      value={businessModel}
+                      onChange={(e) => setBusinessModel(e.target.value)}
+                      onFocus={() => setFocusedField('model')}
+                      onBlur={() => setFocusedField(null)}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        fontSize: '14.5px',
+                        color: businessModel ? C.primary : C.muted,
+                        backgroundColor: '#fafafe',
+                        border: `1.5px solid ${focusedField === 'model' ? C.accent : C.border}`,
+                        borderRadius: '12px',
+                        outline: 'none',
+                        cursor: 'pointer',
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    >
+                      <option value="" disabled hidden>
+                        Select Business Model
+                      </option>
+                      <option value="B2B">B2B</option>
+                      <option value="B2C">B2C</option>
+                      <option value="SaaS">SaaS</option>
+                      <option value="Marketplace">Marketplace</option>
+                      <option value="Subscription">Subscription</option>
+                      <option value="Enterprise">Enterprise</option>
+                      <option value="Freemium">Freemium</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 8. Key Features */}
+                <div>
+                  <label
+                    htmlFor="key-features"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: '4px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: C.primary,
+                      letterSpacing: '-0.01em',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Key Features
+                    <span style={{ fontWeight: 400, color: C.muted, fontSize: '11px' }}>(optional)</span>
+                  </label>
+                  <input
+                    id="key-features"
+                    type="text"
+                    value={keyFeatures}
+                    onChange={(e) => setKeyFeatures(e.target.value)}
+                    onFocus={() => setFocusedField('features')}
+                    onBlur={() => setFocusedField(null)}
+                    placeholder="e.g. AI chatbot, Voice assistant, OCR scanning, WhatsApp integration"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      fontSize: '14.5px',
+                      color: C.primary,
+                      backgroundColor: '#fafafe',
+                      border: `1.5px solid ${focusedField === 'features' ? C.accent : C.border}`,
+                      borderRadius: '12px',
+                      outline: 'none',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* SUBMIT BUTTON */}
+              {(() => {
+                const activeIndustry = selectedIndustry === 'Other' ? customIndustry : selectedIndustry
+                
+                const isFormValid =
+                  idea.trim() !== '' &&
+                  description.trim() !== '' &&
+                  activeIndustry.trim() !== '' &&
+                  targetCustomer.trim() !== '' &&
+                  targetCountry.trim() !== ''
+
+                return (
+                  <motion.button
+                    id="validate-btn"
+                    onClick={() => {
+                      if (!isFormValid) return
+                      const featureList = keyFeatures
+                        .split(',')
+                        .map((f) => f.trim())
+                        .filter(Boolean)
+
+                      navigate('/loading', {
+                        state: {
+                          idea,
+                          description,
+                          industry: activeIndustry,
+                          targetCustomer,
+                          targetCountry,
+                          startupStage,
+                          businessModel,
+                          keyFeatures: featureList,
+                        },
+                      })
+                    }}
+                    whileHover={isFormValid ? { scale: 1.01, y: -1 } : {}}
+                    whileTap={isFormValid ? { scale: 0.98 } : {}}
+                    style={{
+                      width: '100%',
+                      padding: '14px 24px',
+                      backgroundColor: isFormValid ? C.accent : '#9090b0',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '12px',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      cursor: isFormValid ? 'pointer' : 'not-allowed',
+                      opacity: isFormValid ? 1 : 0.6,
+                      fontFamily: "'DM Sans', sans-serif",
+                      letterSpacing: '-0.01em',
+                      transition: 'background-color 0.2s ease',
+                    }}
+                  >
+                    Validate Startup Idea
+                  </motion.button>
+                )
+              })()}
+
           </motion.div>
+
         </div>
       </section>
 
@@ -979,7 +1319,7 @@ export default function LandingPage() {
                   maxWidth: '220px',
                 }}
               >
-                AI-powered startup validation for founders who build with intention.
+                Data-driven startup validation for founders who build with intention.
               </p>
             </div>
 
