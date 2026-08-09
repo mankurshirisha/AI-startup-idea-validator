@@ -40,7 +40,7 @@ app = FastAPI(title="AI Startup Idea Validator", version="2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://ai-startup-idea-validator-dp36.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
