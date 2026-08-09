@@ -14,7 +14,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { CheckCircle2, Circle, Loader2, AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react'
+import { CheckCircle2, Circle } from 'lucide-react'
 import { BarLoader } from '@/components/ui/BarLoader'
 import { mapBackendToValidationResult } from '@/lib/validationService'
 import type { BackendValidationResponse } from '@/lib/validationService'
