@@ -6,6 +6,7 @@
 
 import api from './api'
 import type { ValidationResult, AgentResult, Competitor, MarketData } from '@/types/dashboard'
+import type { ScoreDimension } from '@/types/dashboard'
 
 export interface StartupValidationPayload {
   startupIdea: string
