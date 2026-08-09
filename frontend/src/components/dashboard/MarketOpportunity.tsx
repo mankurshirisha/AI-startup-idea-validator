@@ -93,7 +93,7 @@ export function MarketOpportunity({ market, targetCountry }: Props) {
           gap: '14px',
         }}
       >
-        <div style={{ width: '34px', height: '34px', borderRadius: RADIUS.md, backgroundColor: C.accentSoft, display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0 }}>
+        <div style={{ width: '34px', height: '34px', borderRadius: RADIUS.md, backgroundColor: C.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Sparkles size={17} color={C.accent} strokeWidth={2.2} />
         </div>
         <div>
