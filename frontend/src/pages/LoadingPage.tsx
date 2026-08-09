@@ -81,15 +81,8 @@ const STAGE_TO_IDX: Record<string, number> = {
   comparison:  3,
 }
 
-/* ─── Status messages (rotate while loading) ────────── */
-const STATUS_MESSAGES = [
-  'Searching trusted market sources...',
-  'Analyzing industry trends...',
-  'Discovering key competitors...',
-  'Calculating market opportunity...',
-  'Comparing your startup to alternatives...',
-  'Generating executive summary...',
-]
+
+
 
 /* ─── Agent status icon ───────────────────────────────── */
 function AgentIcon({ status }: { status: AgentStatus }) {
