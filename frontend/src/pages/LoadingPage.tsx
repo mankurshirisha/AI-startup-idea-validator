@@ -188,7 +188,7 @@ export default function LoadingPage() {
   /* ── Backend Integration State ── */
   const [apiResult, setApiResult] = useState<ValidationResult | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [isRetrying, setIsRetrying] = useState(0)
+  const [isRetrying] = useState(0)
 
   /* ── Rotating status message ── */
   const [msgIdx, setMsgIdx] = useState(0)
