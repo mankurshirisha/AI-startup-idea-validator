@@ -19,13 +19,18 @@ try:
     from web_search_agent import IdeaRequest, run_web_search_agent
 
 except ImportError:
-    from ..comparison_agent import ComparisonRequest, run_comparison_agent
-    from ..competitor_discovery_agent import (CompetitorRequest,
-                                              run_competitor_discovery_agent)
-    from ..market_opportunity_agent import (CustomerAnalysis, MarketAnalysis,
-                                            MarketOpportunityRequest,
-                                            run_market_opportunity_agent)
-    from ..web_search_agent import IdeaRequest, run_web_search_agent
+    from comparison_agent import ComparisonRequest, run_comparison_agent
+    from competitor_discovery_agent import (
+        CompetitorRequest,
+        run_competitor_discovery_agent,
+    )
+    from market_opportunity_agent import (
+        CustomerAnalysis,
+        MarketAnalysis,
+        MarketOpportunityRequest,
+        run_market_opportunity_agent,
+    )
+    from web_search_agent import IdeaRequest, run_web_search_agent
 
 
 logger = get_logger(__name__)
