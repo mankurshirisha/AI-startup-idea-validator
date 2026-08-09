@@ -4,7 +4,7 @@
  * Shows top points by default with "View Details" toggle to reveal all points.
  */
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import type { ValidationResult, SWOTData } from '@/types/dashboard'
 import { C, FONT, RADIUS, fadeUp } from './tokens'
 import { SectionHeader } from './SectionHeader'
