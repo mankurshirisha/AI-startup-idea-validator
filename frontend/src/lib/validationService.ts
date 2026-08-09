@@ -544,8 +544,7 @@ export async function validateStartupIdea(
   payload: StartupValidationPayload
 ): Promise<ValidationResult> {
   const idea = payload.startupIdea.trim()
-  const description = payload.description.trim()
-
+  const description = payload.description?.trim() ?? ''
   if (!idea || idea.length < 3) {
     throw new Error('Please enter a valid startup idea (at least 3 characters).')
   }
