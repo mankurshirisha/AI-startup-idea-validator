@@ -35,7 +35,7 @@ function getRingColor(score: number): string {
   return '#dc2626'
 }
 
-function getVerdictExplanation(score: number, idea: string, industry?: string): string {
+function getVerdictExplanation(score: number, _idea: string, industry?: string): string {
   if (score >= 85) {
     return `This verdict reflects high market demand, strong software scalability, and low execution risk in the ${industry || 'target'} market. The primary advantage is clear product differentiation against existing solutions.`
   }
