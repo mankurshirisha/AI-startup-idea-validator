@@ -497,7 +497,7 @@ export function mapBackendToValidationResult(
   ]
 
   // 16. Final Verdict Rationale
-  let finalDecision: ValidationResult['finalVerdict']['decision'] = 'Proceed with Improvements'
+  let finalDecision: NonNullable<ValidationResult['finalVerdict']>['decision'] = 'Proceed with Improvements'
   if (score >= 85) finalDecision = 'Should Proceed'
   else if (score >= 70) finalDecision = 'Proceed with Improvements'
   else if (score >= 50) finalDecision = 'Needs Significant Refinement'
