@@ -6,7 +6,8 @@
 import { motion } from 'framer-motion'
 import type { ValidationResult } from '@/types/dashboard'
 import { C, FONT, RADIUS, fadeUp } from './tokens'
-import { Badge, BadgeVariant } from './Badge'
+import { Badge } from './Badge'
+import type { BadgeVariant } from './Badge'
 import { SectionHeader } from './SectionHeader'
 import { Award, ShieldCheck, Sparkles, AlertCircle, ArrowRight } from 'lucide-react'
 
