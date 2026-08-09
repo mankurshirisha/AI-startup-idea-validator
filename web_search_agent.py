@@ -112,19 +112,33 @@ def run_web_search_agent(
     )
 
     # ======================================================
-    # TAVILY SEARCH
+    # TAVILY SEARCH (OPTIMIZED WITH AUTOMATIC FALLBACK)
     # ======================================================
 
     try:
-        logger.info("Starting Tavily search request for region: %s", target_country)
-        search = tavily_client.search(query=query, search_depth="advanced")
+        logger.info("Starting Tavily search request (basic depth) for region: %s", target_country)
+        search_results = []
+        try:
+            search = tavily_client.search(query=query, search_depth="basic", max_results=6)
+            search_results = search.get("results", [])
+        except Exception:
+            logger.warning("Basic Tavily search failed; retrying with advanced search")
+
+        # Fallback to advanced search if basic search returned fewer than 2 results
+        if len(search_results) < 2:
+            logger.info("Basic search returned %d results; upgrading to advanced search", len(search_results))
+            try:
+                search = tavily_client.search(query=query, search_depth="advanced", max_results=6)
+                search_results = search.get("results", [])
+            except Exception:
+                logger.exception("Advanced Tavily search fallback also failed")
 
         processed_sources = []
-
-        for item in search.get("results", []):
-            processed_sources.append(
-                {"url": item.get("url"), "content": item.get("content")}
-            )
+        for item in search_results:
+            if item.get("url") and item.get("content"):
+                processed_sources.append(
+                    {"url": item.get("url"), "content": item.get("content")}
+                )
 
         logger.info(
             "Tavily search completed successfully with %s results",
@@ -143,50 +157,57 @@ def run_web_search_agent(
     # ======================================================
 
     prompt = f"""
-You are an expert Startup Market Research Agent specializing in regional and industry analysis.
+You are a startup mentor helping a first-time founder understand their market.
+Write as if you are explaining this over a coffee chat — plain English, no jargon.
 
-Current Year:
-{datetime.now().year}
+Year: {datetime.now().year}
 
-STARTUP CONTEXT:
-- Startup Idea: {idea}
-- Description: {description}
-- Industry / Domain: {industry}
-- Target Customer: {target_customer}
-- Target Country / Region: {target_country}
-- Startup Stage: {startup_stage}
-- Business Model: {business_model}
-- Key Features: {features_str}
+Startup being evaluated:
+- Idea: {idea}
+- What it does: {description}
+- Industry: {industry}
+- Who it's for: {target_customer}
+- Where it will sell: {target_country}
+- Current stage: {startup_stage}
+- How it makes money: {business_model}
+- Main features: {features_str}
 
-Verified Sources:
+Here are the search results we found online:
 {json.dumps(processed_sources, indent=2)}
 
-Task:
-Analyze the startup idea using the verified sources provided above and your knowledge of {target_country}.
-IMPORTANT LOCATION & CURRENCY RULE:
-- Focus on market dynamics, demand, regulations, and competitors SPECIFIC to {target_country}.
-- Format all market size numbers and currency values using the local currency context for {target_country} (e.g. INR ₹ for India, USD $ for USA, GBP £ for UK, EUR € for Europe, etc.).
+Using the search results above and your knowledge of {target_country}, give a realistic picture of the market.
 
-Return ONLY valid JSON in exactly the following format:
+Currency rule — use the local currency for {target_country}:
+- India → INR (₹, in Crores)
+- USA → USD ($, in Billions/Millions)
+- UK → GBP (£)
+- Europe → EUR (€)
+- Japan → JPY (¥)
+- Australia → AUD ($)
+- Canada → CAD ($)
+Do NOT use USD if the country is not USA or Global.
+
+Return ONLY valid JSON in exactly this format — no markdown, no extra text:
 
 {{
-    "market_size": "",
-    "growth_rate": "",
+    "market_size": "<total size of this market in local currency, e.g. ₹12,000 Crore or $4.5 Billion>",
+    "growth_rate": "<how fast this market is growing per year, e.g. 18% per year>",
     "industry": "{industry}",
-    "market_trends": [],
-    "real_competitors": [],
+    "market_trends": ["<what is changing in this market right now>", "<another real trend>"],
+    "real_competitors": ["<name of company 1 operating in {target_country}>", "<name of company 2>"],
     "confidence_score": 0,
     "verified_sources": []
 }}
 
 Rules:
-1. Return ONLY valid JSON. Do not include markdown, explanations, or code fences.
-2. "confidence_score" MUST be an integer between 0 and 100.
-3. Do NOT include "%" or text in confidence_score.
-4. Calculate confidence based on data completeness and source quality for {target_country}.
-5. "verified_sources" MUST contain real URLs from the provided Verified Sources.
-6. "real_competitors" MUST prioritize existing companies operating in {target_country} or relevant globally.
-7. Include regional regulations or policies for {target_country} under market_trends if found.
+1. Return ONLY valid JSON. No markdown, no explanations, no code fences.
+2. "confidence_score" must be a whole number between 0 and 100. No % sign.
+   Set it lower (below 60) if you found little data about {target_country}. Be honest.
+3. "verified_sources" must contain real URLs from the search results above only.
+4. "real_competitors" should focus on companies that operate in {target_country}.
+   If no local companies exist, list major global ones that serve users there.
+5. "market_trends" should include any local rules, government policies, or regulations for {target_country} if found.
+6. Keep all text short and factual. No consultant language.
 """
 
     # ======================================================
@@ -197,6 +218,8 @@ Rules:
         logger.info("Starting Gemini analysis request")
         raw = generate_content(prompt)
         result = json.loads(raw)
+        if isinstance(result, dict):
+            result["raw_sources"] = processed_sources
         logger.info("Web search agent completed successfully")
         return result
 

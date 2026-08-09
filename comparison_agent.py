@@ -51,6 +51,7 @@ class ComparisonRequest(BaseModel):
     businessModel: str = "B2B"
     targetCustomer: str = ""
     keyFeatures: List[str] = []
+    startupStage: str = "Idea"
 
 
 def _parse_json_payload(content: str, default=None):
@@ -173,25 +174,96 @@ def _call_gemini(prompt: str, timeout: int = 15) -> str:
         ) from None
 
 
+def _fallback_personalized_recommendations(
+    startup: str,
+    industry: str,
+    target_customer: str,
+    business_model: str,
+    location: str,
+) -> dict:
+    """Return safe, context-aware fallback recommendations when Gemini fails."""
+    cust = target_customer or "target customers"
+    ind = industry or "your industry"
+    loc = location or "your target market"
+    bm = business_model or "your business model"
+    return {
+        "innovation": f"Differentiate {startup} by adding unique features that directly solve the biggest pain points of {cust} in {ind}.",
+        "market_demand": f"Run a focused pilot with a small group of {cust} in {loc} to validate demand before scaling your {bm} model.",
+        "competition": f"Identify the single feature gap most competitors in {ind} leave unaddressed and build your positioning around it.",
+        "scalability": f"Design your core workflows to serve additional customer segments beyond {cust} as the business grows into {loc}.",
+        "technical_feasibility": f"Prioritize product reliability, user data security, and a simple onboarding experience for {cust} from day one.",
+        "business_viability": f"Test at least two pricing tiers with {cust} early to find the model that balances acquisition and sustainable revenue.",
+    }
+
+
 def _build_single_analysis_prompt(
-    startup: str, description: str, industry: str, competitors: List[dict]
+    startup: str,
+    description: str,
+    industry: str,
+    competitors: List[dict],
+    location: str = "Global",
+    business_model: str = "B2B",
+    target_customer: str = "",
+    startup_stage: str = "Idea",
 ) -> str:
     return f"""
-You are an expert startup strategist and product analyst.
+You are a startup mentor with 15 years of experience helping first-time founders.
+You are reviewing a startup and comparing it to the companies already in the market.
+Write everything in plain English. Explain things as if the founder has never read a business textbook.
+Be specific, honest, and direct.
 
-Startup Idea:
-{startup}
+Here is the startup:
+- Name / Idea: {startup}
+- What it does: {description}
+- Industry: {industry}
+- Who it's for: {target_customer or 'General consumers'}
+- How it makes money: {business_model}
+- Where it's at right now: {startup_stage}
+- Where it's selling: {location}
 
-Startup Description:
-{description}
-
-Industry:
-{industry}
-
-Competitors:
+Here are the competitors already operating in this space:
 {json.dumps(competitors, indent=2)}
 
-Analyze the startup against the competitors and return ONLY valid JSON with this schema:
+Your job is to compare this startup to its competitors and fill in every field below honestly.
+
+Guidelines before you start:
+- Be realistic. Not every startup is amazing.
+- If something is genuinely strong, say so and explain why.
+- If something is weak or uncertain, say so clearly.
+- Avoid phrases like: leverage, utilize, robust, optimize, cutting-edge, game-changing, ecosystem, unlock, transformative, strategic positioning.
+- Every recommendation should tell the founder what they can actually do — not vague advice.
+- If something is uncertain, say "this is uncertain because..."
+- Do not repeat the same idea in different fields.
+
+Field-by-field guidance:
+- startup_features: List the main things this startup does or offers. Keep it to actual features.
+- feature_comparison: For each competitor, list what features both share, what only the startup has, and what only the competitor has.
+- similarity_scores: How similar is this startup to each competitor? 0 = completely different, 100 = nearly identical.
+- market_gaps: What specific customer needs are competitors NOT meeting that this startup could serve?
+- strategic_recommendations: 3-5 things the founder should do in the next 6 months. Be specific to this startup.
+- threats: Real risks from competitors or the market. Be honest, not alarming.
+- business_insights.strengths: What does this startup genuinely do better than competitors right now?
+- business_insights.weaknesses: What honest gaps or problems does this startup have compared to competitors?
+- business_insights.opportunities: What real doors are open in {location} that competitors are not walking through?
+- business_insights.recommendations: 3-4 concrete steps the founder can take. Reference this startup specifically.
+- final_value_proposition: One clear sentence explaining what makes this startup worth choosing over competitors.
+
+For the 6 personalized_recommendations:
+Write exactly ONE sentence per category, 15 to 25 words long.
+Every sentence must be specific to THIS startup — not generic startup advice.
+Sound like a mentor giving direct advice to this founder.
+Do NOT give advice about AI infrastructure, model fine-tuning, vector databases, GPU scaling, API optimization, or any backend technical implementation unless this startup is explicitly a developer tool.
+Do not repeat the same idea across categories.
+
+Category guidance:
+- innovation: What can this startup add or change to be more unique for {target_customer or 'its customers'} in {industry}?
+- market_demand: How should the founder reach more {target_customer or 'customers'} in {location} or confirm demand?
+- competition: What is the ONE thing this startup should build its positioning around to stand apart from competitors?
+- scalability: What is the most realistic way to grow beyond the first group of customers?
+- technical_feasibility: What should the founder do to make the product more reliable, secure, or easy to use?
+- business_viability: What pricing or revenue approach makes the most sense for {business_model} in {location}?
+
+Return ONLY valid JSON with this exact schema — no markdown, no explanations outside the JSON:
 
 {{
   "startup_features": ["feature 1", "feature 2"],
@@ -222,10 +294,16 @@ Analyze the startup against the competitors and return ONLY valid JSON with this
     "opportunities": ["..."],
     "recommendations": ["..."]
   }},
-  "final_value_proposition": "..."
+  "final_value_proposition": "...",
+  "personalized_recommendations": {{
+    "innovation": "<15-25 word sentence>",
+    "market_demand": "<15-25 word sentence>",
+    "competition": "<15-25 word sentence>",
+    "scalability": "<15-25 word sentence>",
+    "technical_feasibility": "<15-25 word sentence>",
+    "business_viability": "<15-25 word sentence>"
+  }}
 }}
-
-Do not include explanations.
 """
 
 
@@ -304,11 +382,21 @@ def _fallback_analysis_payload(
         "threats": [],
         "business_insights": _default_insights(),
         "final_value_proposition": f"{startup} addresses core market needs with a focused product experience.",
+        "personalized_recommendations": _fallback_personalized_recommendations(
+            startup, "", "", "B2B", "Global"
+        ),
     }
 
 
 def _normalize_single_analysis_payload(
-    payload: dict, startup: str, description: str, competitors: List[dict]
+    payload: dict,
+    startup: str,
+    description: str,
+    competitors: List[dict],
+    location: str = "Global",
+    business_model: str = "B2B",
+    target_customer: str = "",
+    startup_stage: str = "Idea",
 ) -> dict:
     if not isinstance(payload, dict):
         return _fallback_analysis_payload(startup, description, competitors)
@@ -335,6 +423,23 @@ def _normalize_single_analysis_payload(
     if not isinstance(business_insights, dict):
         business_insights = _default_insights()
 
+    # Validate personalized_recommendations — must be a dict with all 6 string keys.
+    raw_pr = payload.get("personalized_recommendations", {})
+    required_keys = {
+        "innovation", "market_demand", "competition",
+        "scalability", "technical_feasibility", "business_viability",
+    }
+    if (
+        isinstance(raw_pr, dict)
+        and required_keys.issubset(raw_pr.keys())
+        and all(isinstance(raw_pr.get(k), str) and raw_pr.get(k).strip() for k in required_keys)
+    ):
+        personalized_recommendations = {k: raw_pr[k].strip() for k in required_keys}
+    else:
+        personalized_recommendations = _fallback_personalized_recommendations(
+            startup, startup_stage, target_customer, business_model, location
+        )
+
     return {
         "startup_features": normalize_feature_list(list(startup_features)),
         "feature_comparison": feature_comparison,
@@ -349,21 +454,39 @@ def _normalize_single_analysis_payload(
             "recommendations": business_insights.get("recommendations", []),
         },
         "final_value_proposition": payload.get("final_value_proposition", ""),
+        "personalized_recommendations": personalized_recommendations,
     }
 
 
 def _generate_single_analysis_payload(
-    startup: str, description: str, industry: str, competitors: List[dict]
+    startup: str,
+    description: str,
+    industry: str,
+    competitors: List[dict],
+    location: str = "Global",
+    business_model: str = "B2B",
+    target_customer: str = "",
+    startup_stage: str = "Idea",
 ) -> dict:
     logger.info("Starting comparison analysis request")
-    prompt = _build_single_analysis_prompt(startup, description, industry, competitors)
+    prompt = _build_single_analysis_prompt(
+        startup, description, industry, competitors,
+        location=location,
+        business_model=business_model,
+        target_customer=target_customer,
+        startup_stage=startup_stage,
+    )
 
     try:
         logger.info("Starting Gemini comparison analysis request")
         content = _call_gemini(prompt)
         parsed_content = _parse_json_payload(content, {})
         payload = _normalize_single_analysis_payload(
-            parsed_content, startup, description, competitors
+            parsed_content, startup, description, competitors,
+            location=location,
+            business_model=business_model,
+            target_customer=target_customer,
+            startup_stage=startup_stage,
         )
         logger.info("Comparison analysis completed successfully")
         return payload
@@ -411,6 +534,7 @@ def run_comparison_agent(
     business_model: str = "B2B",
     target_customer: str = "",
     key_features: List[str] = None,
+    startup_stage: str = "Idea",
 ) -> dict:
     """Run the comparison and insight generation workflow.
 
@@ -423,6 +547,7 @@ def run_comparison_agent(
         business_model: Business model.
         target_customer: Target customer segment.
         key_features: List of key features.
+        startup_stage: Stage of the startup (Idea, MVP, Pre-Revenue, etc.).
 
     Returns:
         dict: A structured comparison response with business insights.
@@ -445,6 +570,10 @@ def run_comparison_agent(
             description,
             industry,
             normalized_competitors,
+            location=location,
+            business_model=business_model,
+            target_customer=target_customer,
+            startup_stage=startup_stage,
         )
 
         return {
@@ -461,6 +590,12 @@ def run_comparison_agent(
             "similarity_scores": analysis_payload.get("similarity_scores", []),
             "market_gaps": analysis_payload.get("market_gaps", []),
             "business_insights": analysis_payload.get("business_insights", {}),
+            "personalized_recommendations": analysis_payload.get(
+                "personalized_recommendations",
+                _fallback_personalized_recommendations(
+                    startup, industry, target_customer, business_model, location
+                ),
+            ),
         }
 
     except HTTPException:
@@ -489,6 +624,7 @@ def analyze_comparison(request: ComparisonRequest):
         business_model=request.businessModel,
         target_customer=request.targetCustomer,
         key_features=request.keyFeatures,
+        startup_stage=request.startupStage,
     )
 
 

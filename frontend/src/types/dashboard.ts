@@ -71,16 +71,12 @@ export interface MarketInsightsData {
 
 export interface CategorizedRecommendation {
   category:
-    | 'Immediate Actions'
-    | 'Product Improvements'
-    | 'Business Strategy'
-    | 'Go-to-Market Strategy'
-    | 'Fundraising Readiness'
-    | 'Long-Term Growth'
-    | 'Quick Wins'
-    | 'High Impact Improvements'
-    | 'Long-term Strategy'
-    | 'Investor Advice'
+    | 'Innovation'
+    | 'Market Demand'
+    | 'Competition'
+    | 'Scalability'
+    | 'Technical Feasibility'
+    | 'Business Viability'
   priority: 'High' | 'Medium' | 'Strategic'
   impact?: 'High Impact' | 'Medium Impact' | 'Transformational'
   text: string

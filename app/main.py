@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import json
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -101,7 +102,7 @@ def home():
 
 
 # ==========================================================
-# COMPLETE STARTUP VALIDATION PIPELINE (OPTIMIZED PARALLEL)
+# COMPLETE STARTUP VALIDATION PIPELINE (OPTIMIZED PARALLEL & PROFILED)
 # ==========================================================
 
 
@@ -113,11 +114,13 @@ def home():
 )
 def validate(request: StartupRequest):
     logger.info("Startup validation request received for idea: %s", request.startupIdea)
+    pipeline_start = time.perf_counter()
 
     # ──────────────────────────────────────────────────────
     # STEP 1 - WEB SEARCH
     # ──────────────────────────────────────────────────────
     logger.info("Starting web search step")
+    t0 = time.perf_counter()
     web_result = run_web_search_agent(
         idea=request.startupIdea,
         description=request.description,
@@ -128,12 +131,18 @@ def validate(request: StartupRequest):
         business_model=request.businessModel or "B2B",
         key_features=request.keyFeatures or [],
     )
+    t_web = time.perf_counter() - t0
+    logger.info("PIPELINE PROFILE | Web Search Agent | Elapsed: %.3fs", t_web)
+
+    # Reusable web search evidence for downstream agents
+    raw_sources = web_result.get("raw_sources", [])
 
     # ──────────────────────────────────────────────────────
     # STEP 2 & STEP 3 - PARALLEL EXECUTION (Market Opp & Competitors)
     # ──────────────────────────────────────────────────────
     market_request = _build_market_opportunity_request(request, web_result)
-    logger.info("Starting parallel execution for Market Opportunity & Competitor Discovery")
+    logger.info("Starting parallel execution for Market Opportunity & Competitor Discovery (reusing web search evidence)")
+    t_parallel_start = time.perf_counter()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_market = executor.submit(run_market_opportunity_agent, market_request)
@@ -149,15 +158,20 @@ def validate(request: StartupRequest):
             business_model=request.businessModel or "B2B",
             target_customer=request.targetCustomer or "",
             key_features=request.keyFeatures or [],
+            existing_sources=raw_sources,
         )
 
         market_result = future_market.result()
         competitor_result = future_competitor.result()
 
+    t_parallel = time.perf_counter() - t_parallel_start
+    logger.info("PIPELINE PROFILE | Parallel Market Opp & Competitor Discovery | Elapsed: %.3fs", t_parallel)
+
     # ──────────────────────────────────────────────────────
     # STEP 4 - COMPARISON
     # ──────────────────────────────────────────────────────
     logger.info("Starting comparison step")
+    t0 = time.perf_counter()
     comparison_result = run_comparison_agent(
         startup_idea=request.startupIdea,
         description=request.description,
@@ -167,7 +181,13 @@ def validate(request: StartupRequest):
         business_model=request.businessModel or "B2B",
         target_customer=request.targetCustomer or "",
         key_features=request.keyFeatures or [],
+        startup_stage=request.startupStage or "Idea",
     )
+    t_comp = time.perf_counter() - t0
+    logger.info("PIPELINE PROFILE | Comparison Agent | Elapsed: %.3fs", t_comp)
+
+    t_total = time.perf_counter() - pipeline_start
+    logger.info("PIPELINE PROFILE | Full Validation Pipeline Total | Elapsed: %.3fs", t_total)
 
     return {
         "status": "success",
@@ -179,7 +199,7 @@ def validate(request: StartupRequest):
 
 
 # ==========================================================
-# SSE STREAMING PIPELINE (OPTIMIZED PARALLEL STREAMING)
+# SSE STREAMING PIPELINE (OPTIMIZED PARALLEL STREAMING & PROFILED)
 # ==========================================================
 
 
@@ -191,11 +211,13 @@ def validate(request: StartupRequest):
 )
 def validate_stream(request: StartupRequest):
     def _generate():
+        pipeline_start = time.perf_counter()
         try:
             # ──────────────────────────────────────────────────
             # STAGE 1 — Web Search
             # ──────────────────────────────────────────────────
             yield f"data: {json.dumps({'stage': 'web_search', 'status': 'running'})}\n\n"
+            t0 = time.perf_counter()
             web_result = run_web_search_agent(
                 idea=request.startupIdea,
                 description=request.description,
@@ -206,19 +228,27 @@ def validate_stream(request: StartupRequest):
                 business_model=request.businessModel or "B2B",
                 key_features=request.keyFeatures or [],
             )
+            t_web = time.perf_counter() - t0
+            logger.info("PIPELINE PROFILE | Web Search Agent | Elapsed: %.3fs", t_web)
             yield f"data: {json.dumps({'stage': 'web_search', 'status': 'done'})}\n\n"
 
+            raw_sources = web_result.get("raw_sources", [])
+
             # ──────────────────────────────────────────────────
-            # STAGE 2 & STAGE 3 — PARALLEL EXECUTION
+            # STAGE 2 & STAGE 3 — PARALLEL EXECUTION WITH IMMEDIATE STREAMING
             # ──────────────────────────────────────────────────
             yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'running'})}\n\n"
             yield f"data: {json.dumps({'stage': 'competitor', 'status': 'running'})}\n\n"
 
             market_request = _build_market_opportunity_request(request, web_result)
+            t_parallel_start = time.perf_counter()
+
+            market_result = None
+            competitor_result = None
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                future_market = executor.submit(run_market_opportunity_agent, market_request)
-                future_competitor = executor.submit(
+                f_market = executor.submit(run_market_opportunity_agent, market_request)
+                f_competitor = executor.submit(
                     run_competitor_discovery_agent,
                     startup_idea=request.startupIdea,
                     industry_analysis={"industry": request.industry or web_result.get("industry", "")},
@@ -230,30 +260,50 @@ def validate_stream(request: StartupRequest):
                     business_model=request.businessModel or "B2B",
                     target_customer=request.targetCustomer or "",
                     key_features=request.keyFeatures or [],
+                    existing_sources=raw_sources,
                 )
 
-                # Wait for both parallel agents to complete
-                market_result = future_market.result()
-                yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
+                futures_map = {
+                    f_market: 'market_opp',
+                    f_competitor: 'competitor',
+                }
 
-                competitor_result = future_competitor.result()
-                yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
+                for future in concurrent.futures.as_completed(futures_map):
+                    stage_name = futures_map[future]
+                    if stage_name == 'market_opp':
+                        market_result = future.result()
+                        logger.info("PIPELINE PROFILE | Market Opportunity Agent finished | Elapsed: %.3fs", time.perf_counter() - t_parallel_start)
+                        yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
+                    elif stage_name == 'competitor':
+                        competitor_result = future.result()
+                        logger.info("PIPELINE PROFILE | Competitor Discovery Agent finished | Elapsed: %.3fs", time.perf_counter() - t_parallel_start)
+                        yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
+
+            t_parallel = time.perf_counter() - t_parallel_start
+            logger.info("PIPELINE PROFILE | Parallel Stage Total | Elapsed: %.3fs", t_parallel)
 
             # ──────────────────────────────────────────────────
             # STAGE 4 — Comparison Agent
             # ──────────────────────────────────────────────────
             yield f"data: {json.dumps({'stage': 'comparison', 'status': 'running'})}\n\n"
+            t0 = time.perf_counter()
             comparison_result = run_comparison_agent(
                 startup_idea=request.startupIdea,
                 description=request.description,
                 industry=request.industry or web_result.get("industry", ""),
-                competitors=competitor_result.get("competitors", []),
+                competitors=competitor_result.get("competitors", []) if competitor_result else [],
                 location=request.targetCountry or "Global",
                 business_model=request.businessModel or "B2B",
                 target_customer=request.targetCustomer or "",
                 key_features=request.keyFeatures or [],
+                startup_stage=request.startupStage or "Idea",
             )
+            t_comp = time.perf_counter() - t0
+            logger.info("PIPELINE PROFILE | Comparison Agent | Elapsed: %.3fs", t_comp)
             yield f"data: {json.dumps({'stage': 'comparison', 'status': 'done'})}\n\n"
+
+            t_total = time.perf_counter() - pipeline_start
+            logger.info("PIPELINE PROFILE | Full Validation Stream Pipeline Total | Elapsed: %.3fs", t_total)
 
             # All stages complete — emit full result payload
             full_result = {
@@ -332,6 +382,7 @@ def comparison_agent(request: ComparisonRequest):
         business_model=request.businessModel,
         target_customer=request.targetCustomer,
         key_features=request.keyFeatures,
+        startup_stage=request.startupStage,
     )
 
 

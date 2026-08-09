@@ -40,6 +40,7 @@ class CompetitorRequest(BaseModel):
     businessModel: str = "B2B"
     targetCustomer: str = ""
     keyFeatures: list = []
+    existingSources: list = []
 
 
 def _normalize_website(website: object) -> str | None:
@@ -124,6 +125,7 @@ def run_competitor_discovery_agent(
     business_model: str = "B2B",
     target_customer: str = "",
     key_features: list = None,
+    existing_sources: list = None,
 ):
     """Run region-first competitor discovery workflow.
 
@@ -138,6 +140,7 @@ def run_competitor_discovery_agent(
         business_model: Business Model (B2B, B2C, SaaS, etc.).
         target_customer: Specific target customer.
         key_features: List of key features.
+        existing_sources: Reuse web search results from previous steps if available.
 
     Returns:
         dict: Structured competitor analysis payload.
@@ -151,94 +154,119 @@ def run_competitor_discovery_agent(
     if not startup_idea:
         raise HTTPException(status_code=400, detail="Startup idea is required.")
 
-    # Region-focused search queries
-    search_queries = [
-        f"Top competitors of {startup_idea} in {location}",
-        f"Leading {industry} companies in {location}",
-        f"Popular {industry} startups in {location}",
-        f"{startup_idea} alternatives in {location}",
-        f"Top {business_model} {industry} platforms in {location}",
-    ]
+    # Check if we can reuse search results from earlier pipeline steps
+    if existing_sources and isinstance(existing_sources, list) and len(existing_sources) > 0:
+        logger.info("Reusing %d existing web search results for competitor discovery", len(existing_sources))
+        processed_results = existing_sources
+    else:
+        # Region-focused search queries
+        search_queries = [
+            f"Top competitors of {startup_idea} in {location}",
+            f"Leading {industry} companies in {location}",
+            f"Popular {industry} startups in {location}",
+            f"{startup_idea} alternatives in {location}",
+            f"Top {business_model} {industry} platforms in {location}",
+        ]
 
-    optimized_query = " OR ".join(search_queries)
+        optimized_query = " OR ".join(search_queries)
 
-    # ==========================================================
-    # TAVILY SEARCH
-    # ==========================================================
+        # ==========================================================
+        # TAVILY SEARCH (BASIC DEFAULT WITH ADVANCED FALLBACK)
+        # ==========================================================
 
-    url = "https://api.tavily.com/search"
+        url = "https://api.tavily.com/search"
+        search_data = {}
 
-    tavily_payload = {
-        "api_key": TAVILY_API_KEY,
-        "query": optimized_query,
-        "search_depth": "advanced",
-        "include_domains": [],
-    }
-
-    try:
-        logger.info("Starting Tavily competitor search request for region %s", location)
-        response = requests.post(
-            url,
-            json=tavily_payload,
-            timeout=60,
-        )
-        response.raise_for_status()
-        search_data = response.json()
-        logger.info("Tavily competitor search completed successfully")
-
-    except Exception:
-        logger.exception("Tavily search failed while discovering competitors")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to retrieve competitor data from the search service.",
-        ) from None
-
-    seen_urls = set()
-    processed_results = []
-
-    for result in search_data.get("results", []):
-        source_url = result.get("url", "")
-        content = result.get("content", "")
-
-        if source_url and source_url not in seen_urls:
-            seen_urls.add(source_url)
-            processed_results.append(
-                {
-                    "url": source_url,
-                    "content": content,
+        # Try basic search depth first for optimal speed
+        for depth in ("basic", "advanced"):
+            try:
+                logger.info("Starting Tavily competitor search (%s depth) for region %s", depth, location)
+                tavily_payload = {
+                    "api_key": TAVILY_API_KEY,
+                    "query": optimized_query,
+                    "search_depth": depth,
+                    "max_results": 6,
+                    "include_domains": [],
                 }
-            )
+                response = requests.post(
+                    url,
+                    json=tavily_payload,
+                    timeout=15,
+                )
+                response.raise_for_status()
+                search_data = response.json()
+                results = search_data.get("results", [])
+                logger.info("Tavily competitor search (%s) completed with %d results", depth, len(results))
+                if len(results) >= 2 or depth == "advanced":
+                    break
+            except Exception:
+                logger.exception("Tavily competitor search (%s) failed", depth)
+                if depth == "advanced" and not search_data:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Unable to retrieve competitor data from the search service.",
+                    ) from None
 
-    if not processed_results:
-        processed_results = [{"url": "https://google.com", "content": f"Search for {startup_idea} competitors in {location}"}]
+        seen_urls = set()
+        processed_results = []
+
+        for result in search_data.get("results", []):
+            source_url = result.get("url", "")
+            content = result.get("content", "")
+
+            if source_url and source_url not in seen_urls:
+                seen_urls.add(source_url)
+                processed_results.append(
+                    {
+                        "url": source_url,
+                        "content": content,
+                    }
+                )
+
+        if not processed_results:
+            processed_results = [{"url": "https://google.com", "content": f"Search for {startup_idea} competitors in {location}"}]
 
     # ==========================================================
     # GEMINI
     # ==========================================================
 
     prompt = f"""
-You are an expert Startup Competitor Discovery Agent specializing in regional market analysis.
+You are a startup mentor helping a first-time founder understand who they are competing against.
+Be specific and honest. Write in plain English. No jargon.
 
-STARTUP CONTEXT:
-- Startup Idea: {startup_idea}
+Here is the startup:
+- Idea: {startup_idea}
 - Industry: {industry}
-- Target Region / Country: {location}
-- Target Customers: {target_cust_str}
-- Business Model: {business_model}
-- Key Features: {", ".join(key_features) if key_features else "N/A"}
+- Selling in: {location}
+- Who it's for: {target_cust_str}
+- How it makes money: {business_model}
+- Main features: {", ".join(key_features) if key_features else "N/A"}
 
-Search Results:
+Here are the search results we found online:
 {json.dumps(processed_results, indent=2)}
 
-Task:
-Identify DIRECT competitors for this startup idea.
-CRITICAL REGIONAL RULE:
-- Prioritize competitors operating in {location} first!
-  (e.g., if Location is India -> look for Indian players like Practo, PharmEasy, 1mg, Apollo, etc.; if USA -> Noom, Omada, Teladoc, etc.; if UK -> Babylon Health, Deliveroo, etc.).
-- If direct local competitors in {location} do not exist, include major global competitors that serve users in {location}.
-- Return companies that solve the SAME problem for similar target customers.
+Your task:
+Find the REAL companies that are already solving the same problem for similar customers.
+These are the competitors this founder needs to know about.
 
-Return ONLY valid JSON in this schema:
+Location rule — this is the most important rule:
+- First look for companies already operating IN {location}.
+  Example: if {location} is India, look for Indian companies like Practo, PharmEasy, 1mg, Apollo, etc.
+  Example: if {location} is USA, look for companies like Noom, Omada, Teladoc, etc.
+  Example: if {location} is UK, look for companies like Babylon Health, Deliveroo, etc.
+- If no local companies exist for this specific idea, then include major global companies that serve customers in {location}.
+- Only include companies that solve the SAME problem for similar customers. Do not include unrelated companies.
+
+For each competitor, fill in:
+- name: company name
+- website: their official website URL (or null if unknown)
+- description: one sentence explaining what they do and who they serve
+- key_features: the 2-4 things that make this competitor appealing to customers
+- target_customers: who they mainly sell to
+- pricing: how they charge (subscription, freemium, per-use, etc.) — be specific if known
+- source: URL where you found this information
+
+Return ONLY valid JSON in this exact schema — no markdown, no explanations:
 
 {{
     "startupIdea":"{startup_idea}",
@@ -292,6 +320,7 @@ def competitor_discovery_agent(payload: CompetitorRequest):
         business_model=payload.businessModel,
         target_customer=payload.targetCustomer,
         key_features=payload.keyFeatures,
+        existing_sources=payload.existingSources,
     )
 
 

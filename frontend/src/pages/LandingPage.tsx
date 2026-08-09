@@ -709,7 +709,7 @@ export default function LandingPage() {
         id="validate"
         ref={formRef}
         style={{
-          padding: '96px 40px 120px',
+          padding: '96px 40px 64px',
           backgroundColor: '#f8f8ff',
           borderTop: `1px solid ${C.border}`,
         }}
@@ -1274,130 +1274,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════
-          FOOTER
-      ══════════════════════════════════════ */}
-      <footer
-        style={{
-          borderTop: `1px solid ${C.border}`,
-          backgroundColor: '#FFFFFF',
-          padding: '60px 40px 40px',
-        }}
-      >
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          {/* Top row */}
-          <div
-            className="grid grid-cols-2 md:grid-cols-4 gap-10 lg:gap-16"
-            style={{ marginBottom: '48px' }}
-          >
-            {/* Brand */}
-            <div className="col-span-2 md:col-span-1">
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  marginBottom: '16px',
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: '18px',
-                    fontWeight: 800,
-                    color: C.primary,
-                    letterSpacing: '-0.04em',
-                  }}
-                >
-                  BeforeBeta
-                </span>
-              </div>
-              <p
-                style={{
-                  fontSize: '14px',
-                  color: C.secondary,
-                  lineHeight: '1.7',
-                  maxWidth: '220px',
-                }}
-              >
-                Data-driven startup validation for founders who build with intention.
-              </p>
-            </div>
 
-            {/* Link columns */}
-            {(
-              [
-                { heading: 'Product', links: ['Features', 'Pricing', 'Changelog', 'Roadmap'] },
-                { heading: 'Company', links: ['About', 'Blog', 'Careers', 'Press'] },
-                { heading: 'Legal',   links: ['Privacy', 'Terms', 'Cookies', 'Security'] },
-              ] as const
-            ).map(({ heading, links }) => (
-              <div key={heading}>
-                <h4
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    color: C.primary,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    marginBottom: '18px',
-                  }}
-                >
-                  {heading}
-                </h4>
-                <ul
-                  style={{
-                    listStyle: 'none',
-                    padding: 0,
-                    margin: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '11px',
-                  }}
-                >
-                  {links.map((link) => (
-                    <li key={link}>
-                      <a
-                        href="#"
-                        style={{
-                          fontSize: '14px',
-                          color: C.secondary,
-                          opacity: 0.6,
-                          textDecoration: 'none',
-                          transition: 'opacity 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
-                      >
-                        {link}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-
-          {/* Bottom bar */}
-          <div
-            style={{
-              borderTop: `1px solid ${C.border}`,
-              paddingTop: '24px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-            }}
-          >
-            <p style={{ fontSize: '13px', color: C.muted }}>
-              © {new Date().getFullYear()} BeforeBeta. All rights reserved.
-            </p>
-            <p style={{ fontSize: '13px', color: C.muted }}>
-              Made for founders, by founders.
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }

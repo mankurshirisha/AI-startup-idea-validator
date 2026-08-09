@@ -58,67 +58,72 @@ def home():
 # -----------------------------
 
 _MARKET_OPP_PROMPT_TEMPLATE = """\
-You are an expert startup market analyst and venture capital evaluator.
+You are an experienced startup mentor helping a first-time founder figure out whether their idea has a real market.
+Be direct and honest. Use plain English. Do not use consultant jargon.
 
-Evaluate the following startup opportunity with deep regional and industry contextual awareness:
+Here is the startup you are reviewing:
+- Idea: {startup_idea}
+- What it does: {description}
+- Industry: {industry}
+- Who it's for: {target_customers}
+- Where it's selling: {location}
+- Stage right now: {startup_stage}
+- How it makes money: {business_model}
+- Main features: {key_features}
 
-STARTUP PROFILE:
-- Startup Idea: {startup_idea}
-- Description: {description}
-- Industry / Domain: {industry}
-- Target Customers: {target_customers}
-- Target Country / Region: {location}
-- Startup Stage: {startup_stage}
-- Business Model: {business_model}
-- Key Features: {key_features}
+Market data already found:
+- Estimated market size: {market_size}
+- How fast this market is growing: {growth_rate}
+- What's happening in this market: {market_trends}
+- Customer groups to target: {customer_segments}
+- Problems these customers face: {customer_pain_points}
 
-MARKET RESEARCH DATA:
-- Market Size: {market_size}
-- Growth Rate: {growth_rate}
-- Market Trends / Regulations: {market_trends}
-- Identified Customer Segments: {customer_segments}
-- Customer Pain Points: {customer_pain_points}
+Your job:
+Look at all this information and give an honest picture of how big the opportunity is for THIS specific startup in {location}.
 
-CRITICAL INSTRUCTIONS:
-1. LOCATION & CURRENCY REQUIREMENT:
-   Analyze the market specifically for {location}.
-   All financial estimates (TAM, SAM, SOM) MUST use the appropriate currency for {location}:
-   - If India -> Use INR (₹) (e.g. ₹50,000 Crore, ₹8,000 Crore, ₹500 Crore)
-   - If USA -> Use USD ($) (e.g. $50 Billion, $8 Billion, $500 Million)
-   - If United Kingdom / UK -> Use GBP (£)
-   - If Europe / Germany / France -> Use EUR (€)
-   - If Japan -> Use JPY (¥)
-   - If Australia -> Use AUD ($)
-   - If Canada -> Use CAD ($)
-   DO NOT use USD if the target country is not USA or Global!
+Currency rule — always use the local currency for {location}:
+- India → INR (₹, in Crores, e.g. ₹50,000 Crore)
+- USA → USD ($, in Billions/Millions)
+- UK → GBP (£)
+- Europe → EUR (€)
+- Japan → JPY (¥)
+- Australia → AUD ($)
+- Canada → CAD ($)
+Never use USD if the country is not USA or Global.
 
-2. DIMENSIONAL EVALUATION (0-100 scale):
-   - Innovation: Novelty vs regional alternatives
-   - Market Demand: Demonstrated regional demand & trends
-   - Competition: Intensity of competitive landscape in {location}
-   - Scalability: Ability to scale given business model ({business_model})
-   - Technical Feasibility: Ease of execution given current tech & stage ({startup_stage})
-   - Business Viability: Monetization potential for target customers in {location}
+Market size terms (explain in plain numbers):
+- TAM = the entire market if every possible customer bought this product
+- SAM = the part of that market this startup can realistically reach with its model
+- SOM = what this startup could actually capture in the first few years
+
+Score the opportunity from 0 to 100 across these six areas.
+Be realistic — not every startup deserves a high score:
+- Innovation (0-100): Is this idea meaningfully different from what already exists in {location}?
+- Market Demand (0-100): Do real people in {location} need this today, and is that growing?
+- Competition (0-100): How crowded is this space in {location}? (Higher score = less crowded = better for the startup)
+- Scalability (0-100): Can this grow quickly with the {business_model} model without costs exploding?
+- Technical Feasibility (0-100): How hard is it to actually build this at the {startup_stage} stage?
+- Business Viability (0-100): Can this realistically make money from {target_customers} in {location}?
 
 Return ONLY valid JSON in exactly this structure — no markdown or code fences:
 {{
   "marketOpportunity": {{
-    "TAM": "<Total Addressable Market in local currency>",
-    "SAM": "<Serviceable Addressable Market in local currency>",
-    "SOM": "<Serviceable Obtainable Market in local currency>"
+    "TAM": "<total market size in local currency>",
+    "SAM": "<reachable market in local currency>",
+    "SOM": "<what this startup can capture in local currency>"
   }},
-  "marketOpportunityScore": <integer 0-100>,
-  "scoreExplanation": "<Concise 1-2 sentence explanation of why this score was assigned considering {location}, {business_model}, and {startup_stage}>",
+  "marketOpportunityScore": <single overall score, integer 0-100>,
+  "scoreExplanation": "<2-3 sentences explaining this score in plain English — what is strong, what is uncertain, be specific to {location} and {business_model}>",
   "customerInsights": {{
-    "targetSegments": ["<segment 1>", "<segment 2>"],
-    "keyPainPoints": ["<pain point 1>", "<pain point 2>"],
+    "targetSegments": ["<specific group 1>", "<specific group 2>"],
+    "keyPainPoints": ["<real problem 1>", "<real problem 2>"],
     "marketDemand": "<High | Moderate | Growing | Emerging>"
   }},
   "recommendations": [
-    "<actionable recommendation 1 tailored to {location} and {business_model}>",
-    "<actionable recommendation 2>",
-    "<actionable recommendation 3>",
-    "<actionable recommendation 4>"
+    "<one concrete action the founder can take in {location} right now>",
+    "<another specific action>",
+    "<a third action>",
+    "<a fourth action>"
   ]
 }}
 """
