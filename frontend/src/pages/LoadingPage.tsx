@@ -355,7 +355,7 @@ export default function LoadingPage() {
           keyFeatures,
         },
       })
-    }, 400)
+    }, 4000)
     return () => clearTimeout(t)
   }, [allDone, apiResult, errorMsg, navigate, idea, description])
 
