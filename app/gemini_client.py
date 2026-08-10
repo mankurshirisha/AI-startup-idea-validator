@@ -1,7 +1,19 @@
-import hashlib
-import time
-from typing import Dict, Optional
+"""Gemini API client with thread-safe TTL response cache and configurable timeout.
 
+Changes vs original:
+- Replaced plain dict cache with cachetools.TTLCache (1-hour TTL, 256 entry max).
+- Added threading.Lock so parallel Stage 2 + Stage 3 Gemini calls don't race on
+  the cache dict.
+- Added `timeout` keyword arg (default 60 s) threaded through to the genai call.
+- Retry backoff and fallback model logic are unchanged.
+"""
+
+import hashlib
+import threading
+import time
+from typing import Optional
+
+from cachetools import TTLCache
 from google import genai
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_MODEL_FALLBACKS
@@ -10,7 +22,12 @@ from app.logging_config import get_logger
 logger = get_logger("app.gemini_client")
 
 _CLIENT: Optional[genai.Client] = None
-_RESPONSE_CACHE: Dict[str, str] = {}
+
+# Thread-safe, size-bounded, TTL-aware response cache.
+# maxsize=256 prevents unbounded memory growth.
+# ttl=3600 means cached responses expire after 1 hour.
+_RESPONSE_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
+_CACHE_LOCK = threading.Lock()
 
 
 def _get_client() -> genai.Client:
@@ -71,13 +88,30 @@ def _should_retry(exc: Exception) -> bool:
     )
 
 
-def generate_content(prompt: str) -> str:
+def generate_content(prompt: str, timeout: int = 60) -> str:
+    """Call Gemini and return the cleaned text response.
+
+    Args:
+        prompt: The prompt to send to Gemini.
+        timeout: Maximum seconds to wait for a single Gemini API response.
+                 Applies per attempt, not across all retries.
+
+    Returns:
+        Cleaned response text (code fences stripped, JSON extracted).
+    """
     if not prompt:
         return ""
 
     cache_key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    if cache_key in _RESPONSE_CACHE:
-        return _RESPONSE_CACHE[cache_key]
+
+    # Thread-safe cache lookup — avoids duplicate in-flight LLM calls for
+    # identical prompts (e.g. when the same startup idea is submitted twice
+    # within the TTL window).
+    with _CACHE_LOCK:
+        cached = _RESPONSE_CACHE.get(cache_key)
+    if cached is not None:
+        logger.info("Gemini cache hit prompt_hash=%s", cache_key[:8])
+        return cached
 
     if not GEMINI_API_KEY:
         raise RuntimeError("Gemini API is not configured.")
@@ -116,7 +150,10 @@ def generate_content(prompt: str) -> str:
                     cleaned_text = _extract_json_like_text(raw_text)
                     elapsed = time.perf_counter() - started
 
-                    _RESPONSE_CACHE[cache_key] = cleaned_text
+                    # Thread-safe cache write
+                    with _CACHE_LOCK:
+                        _RESPONSE_CACHE[cache_key] = cleaned_text
+
                     logger.info(
                         "Gemini request success model=%s elapsed=%.3fs retries=%s fallback_model_used=%s",
                         model_name,

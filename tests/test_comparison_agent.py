@@ -30,7 +30,7 @@ def test_comparison_endpoint_returns_success_payload():
     assert body["startup"] == payload["startupIdea"]
     assert body["industry"] == payload["industry"]
     assert isinstance(body["startup_features"], list)
-    assert isinstance(body["comparison"], list)
+    assert isinstance(body["feature_comparison"], list)
     assert isinstance(body["similarity_scores"], list)
     assert isinstance(body["market_gaps"], list)
     assert isinstance(body["business_insights"], dict)
@@ -61,4 +61,4 @@ def test_comparison_endpoint_accepts_optional_competitor_fields():
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "success"
-    assert isinstance(body["comparison"], list)
+    assert isinstance(body["feature_comparison"], list)

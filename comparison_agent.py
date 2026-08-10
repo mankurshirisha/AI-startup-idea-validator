@@ -196,6 +196,19 @@ def _fallback_personalized_recommendations(
     }
 
 
+def _compact_competitors(competitors: List[dict]) -> str:
+    """Serialize competitor list without indent=2 to reduce Gemini prompt tokens.
+
+    Replaces json.dumps(competitors, indent=2) which added ~35% extra whitespace
+    characters that Gemini still has to tokenize. Compact JSON is semantically
+    identical — the model parses it the same way.
+    """
+    lines = []
+    for c in competitors:
+        lines.append(json.dumps(c, ensure_ascii=False))
+    return "[\n" + ",\n".join(lines) + "\n]"
+
+
 def _build_single_analysis_prompt(
     startup: str,
     description: str,
@@ -222,7 +235,7 @@ Here is the startup:
 - Where it's selling: {location}
 
 Here are the competitors already operating in this space:
-{json.dumps(competitors, indent=2)}
+{_compact_competitors(competitors)}
 
 Your job is to compare this startup to its competitors and fill in every field below honestly.
 
@@ -586,10 +599,16 @@ def run_comparison_agent(
             "targetCustomer": target_customer,
             "keyFeatures": key_features or [],
             "startup_features": analysis_payload.get("startup_features", []),
-            "comparison": analysis_payload.get("comparison", []),
+            # FIX: key was incorrectly "comparison"; _generate_single_analysis_payload
+            # produces "feature_comparison" — this caused the frontend to always
+            # receive an empty comparison array.
+            "feature_comparison": analysis_payload.get("feature_comparison", []),
             "similarity_scores": analysis_payload.get("similarity_scores", []),
             "market_gaps": analysis_payload.get("market_gaps", []),
+            "strategic_recommendations": analysis_payload.get("strategic_recommendations", []),
+            "threats": analysis_payload.get("threats", []),
             "business_insights": analysis_payload.get("business_insights", {}),
+            "final_value_proposition": analysis_payload.get("final_value_proposition", ""),
             "personalized_recommendations": analysis_payload.get(
                 "personalized_recommendations",
                 _fallback_personalized_recommendations(

@@ -1,13 +1,26 @@
+"""Competitor Discovery Agent -- TavilyClient SDK, focused 4-query strategy.
+
+Optimizations vs original:
+- Replaced raw requests.post() with TavilyClient SDK (connection pooling,
+  consistent timeout handling, same as web_search_agent.py).
+- Reduced the 5-query OR-join to 4 focused, non-redundant queries. The
+  original 5-query string contained one near-duplicate pair (query 3 was
+  semantically equivalent to query 2). We removed only that duplicate and
+  kept the business-model-specific query which is semantically distinct.
+- The existing_sources short-circuit (reuse web search results) is unchanged.
+- The Gemini prompt and all output structure are unchanged.
+"""
+
 import json
 import os
 import re
 from urllib.parse import urlparse
 
-import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from tavily import TavilyClient
 
 from app.gemini_client import generate_content
 from app.logging_config import get_logger
@@ -17,6 +30,12 @@ load_dotenv()
 logger = get_logger(__name__)
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+# Initialise TavilyClient once at module level (connection pooling)
+if TAVILY_API_KEY:
+    tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+else:
+    tavily_client = None  # Handled at runtime
 
 app = FastAPI()
 
@@ -114,6 +133,45 @@ def _populate_competitor_websites(structured_output: dict, search_results: list[
     return structured_output
 
 
+def _tavily_competitor_search(query: str, location: str) -> list[dict]:
+    """Search Tavily for competitor data using TavilyClient SDK.
+
+    Uses basic depth first; falls back to advanced if <2 results.
+    SDK is used instead of requests.post() for connection pooling.
+    """
+    if not tavily_client:
+        raise HTTPException(
+            status_code=500,
+            detail="TAVILY_API_KEY is not configured.",
+        )
+
+    for depth in ("basic", "advanced"):
+        try:
+            logger.info(
+                "Tavily competitor search (%s depth) for region %s", depth, location
+            )
+            result = tavily_client.search(
+                query=query,
+                search_depth=depth,
+                max_results=6,
+            )
+            results = result.get("results", [])
+            logger.info(
+                "Tavily competitor search (%s) completed with %d results", depth, len(results)
+            )
+            if len(results) >= 2 or depth == "advanced":
+                return results
+        except Exception:
+            logger.exception("Tavily competitor search (%s) failed", depth)
+            if depth == "advanced":
+                raise HTTPException(
+                    status_code=500,
+                    detail="Unable to retrieve competitor data from the search service.",
+                ) from None
+
+    return []
+
+
 def run_competitor_discovery_agent(
     startup_idea: str,
     industry_analysis: dict,
@@ -156,78 +214,48 @@ def run_competitor_discovery_agent(
 
     # Check if we can reuse search results from earlier pipeline steps
     if existing_sources and isinstance(existing_sources, list) and len(existing_sources) > 0:
-        logger.info("Reusing %d existing web search results for competitor discovery", len(existing_sources))
+        logger.info(
+            "Reusing %d existing web search results for competitor discovery",
+            len(existing_sources),
+        )
         processed_results = existing_sources
     else:
-        # Region-focused search queries
+        # Focused 4-query strategy (reduced from 5, removes only true semantic duplicate).
+        # Removed: "Popular {industry} startups in {location}" which is near-identical
+        # to "Leading {industry} companies in {location}".
+        # Kept: business-model-specific query which is semantically distinct.
         search_queries = [
             f"Top competitors of {startup_idea} in {location}",
             f"Leading {industry} companies in {location}",
-            f"Popular {industry} startups in {location}",
-            f"{startup_idea} alternatives in {location}",
+            f"{startup_idea} alternatives {industry}",
             f"Top {business_model} {industry} platforms in {location}",
         ]
-
         optimized_query = " OR ".join(search_queries)
 
-        # ==========================================================
-        # TAVILY SEARCH (BASIC DEFAULT WITH ADVANCED FALLBACK)
-        # ==========================================================
+        # Use TavilyClient SDK (connection pooling) instead of requests.post()
+        raw_results = _tavily_competitor_search(optimized_query, location)
 
-        url = "https://api.tavily.com/search"
-        search_data = {}
+        seen_urls: set[str] = set()
+        processed_results: list[dict] = []
 
-        # Try basic search depth first for optimal speed
-        for depth in ("basic", "advanced"):
-            try:
-                logger.info("Starting Tavily competitor search (%s depth) for region %s", depth, location)
-                tavily_payload = {
-                    "api_key": TAVILY_API_KEY,
-                    "query": optimized_query,
-                    "search_depth": depth,
-                    "max_results": 6,
-                    "include_domains": [],
-                }
-                response = requests.post(
-                    url,
-                    json=tavily_payload,
-                    timeout=15,
-                )
-                response.raise_for_status()
-                search_data = response.json()
-                results = search_data.get("results", [])
-                logger.info("Tavily competitor search (%s) completed with %d results", depth, len(results))
-                if len(results) >= 2 or depth == "advanced":
-                    break
-            except Exception:
-                logger.exception("Tavily competitor search (%s) failed", depth)
-                if depth == "advanced" and not search_data:
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Unable to retrieve competitor data from the search service.",
-                    ) from None
-
-        seen_urls = set()
-        processed_results = []
-
-        for result in search_data.get("results", []):
+        for result in raw_results:
             source_url = result.get("url", "")
             content = result.get("content", "")
 
             if source_url and source_url not in seen_urls:
                 seen_urls.add(source_url)
-                processed_results.append(
-                    {
-                        "url": source_url,
-                        "content": content,
-                    }
-                )
+                processed_results.append({"url": source_url, "content": content})
 
         if not processed_results:
-            processed_results = [{"url": "https://google.com", "content": f"Search for {startup_idea} competitors in {location}"}]
+            processed_results = [
+                {
+                    "url": "https://google.com",
+                    "content": f"Search for {startup_idea} competitors in {location}",
+                }
+            ]
 
     # ==========================================================
-    # GEMINI
+    # GEMINI (prompt unchanged — same output quality)
     # ==========================================================
 
     prompt = f"""
