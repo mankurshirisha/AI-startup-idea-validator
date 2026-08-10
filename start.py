@@ -1,4 +1,5 @@
 import logging
+import os
 import uvicorn
 
 logging.basicConfig(level=logging.INFO)
@@ -8,9 +9,9 @@ if __name__ == "__main__":
     logger.info("Starting Main Application...")
 
     uvicorn.run(
-        "app.main:app",      # Import string required for reload=True
-        host="127.0.0.1",
-        port=8000,
-        reload=True,
-        log_level="info"
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        reload=False,
+        log_level="info",
     )
