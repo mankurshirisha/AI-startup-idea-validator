@@ -19,6 +19,7 @@ import { BarLoader } from '@/components/ui/BarLoader'
 import { mapBackendToValidationResult } from '@/lib/validationService'
 import type { BackendValidationResponse } from '@/lib/validationService'
 import type { ValidationResult } from '@/types/dashboard'
+import { getApiBaseUrl } from '@/lib/api'
 
 /* ─── Design tokens — must stay in sync with index.css ─── */
 const C = {
@@ -202,8 +203,8 @@ export default function LoadingPage() {
     const controller = new AbortController()
     setErrorMsg(null)
 
-    // Derive base URL the same way the axios client does
-    const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
+    // Derive base URL using normalized API base helper
+    const baseUrl = getApiBaseUrl()
 
     ;(async () => {
       try {
