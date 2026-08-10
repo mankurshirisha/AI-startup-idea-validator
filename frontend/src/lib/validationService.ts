@@ -6,7 +6,14 @@
 
 import api from './api'
 
-import type { ValidationResult, AgentResult, Competitor, MarketData, CategorizedRecommendation } from '@/types/dashboard'
+import type {
+  ScoreDimension,
+  ValidationResult,
+  AgentResult,
+  Competitor,
+  MarketData,
+  CategorizedRecommendation,
+} from '@/types/dashboard'
 
 
 export interface StartupValidationPayload {

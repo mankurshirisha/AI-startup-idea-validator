@@ -140,7 +140,7 @@ const FALLBACK_RECOMMENDATIONS: CategorizedRecommendation[] = [
   },
 ]
 
-export function Recommendations({ recommendations, data }: Props) {
+export function Recommendations({ recommendations: _recommendations, data }: Props) {
   // Prefer backend-generated categorized recommendations when available.
   const backendRecs = data?.categorizedRecommendations
 
