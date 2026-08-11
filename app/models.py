@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 
@@ -11,3 +11,9 @@ class StartupRequest(BaseModel):
     startupStage: Optional[str] = "Idea"
     businessModel: Optional[str] = "B2C"
     keyFeatures: Optional[List[str]] = []
+
+
+class BetaBuddyChatRequest(BaseModel):
+    sessionId: Optional[str] = "default_session"
+    question: str
+    validationResult: Optional[Dict[str, Any]] = None

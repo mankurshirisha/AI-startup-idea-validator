@@ -26,7 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.logging_config import get_logger
-from app.models import StartupRequest
+from app.models import StartupRequest, BetaBuddyChatRequest
+from app.chat import process_chat_request
 from app.orchestrator import (
     orchestrate_web_search,
     orchestrate_market_opportunity,
@@ -558,7 +559,22 @@ def comparison_agent(request: ComparisonRequest):
     )
 
 
+@app.post(
+    "/api/betabuddy/chat",
+    summary="BetaBuddy AI Companion endpoint",
+    description="Answers questions strictly based on the current session's startup validation dashboard.",
+    response_description="Structured conversational response from BetaBuddy",
+)
+def betabuddy_chat(request: BetaBuddyChatRequest):
+    return process_chat_request(
+        session_id=request.sessionId or "default_session",
+        question=request.question,
+        validation_result=request.validationResult,
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="127.0.0.1", port=8000)
+
