@@ -1,10 +1,11 @@
-"""Gemini API client with thread-safe TTL response cache and configurable timeout.
+"""Gemini API client with thread-safe TTL response cache and enforced request timeout.
 
-Changes vs original:
-- Replaced plain dict cache with cachetools.TTLCache (1-hour TTL, 256 entry max).
-- Added threading.Lock so parallel Stage 2 + Stage 3 Gemini calls don't race on
-  the cache dict.
-- Added `timeout` keyword arg (default 60 s) threaded through to the genai call.
+Changes vs previous version:
+- TTL cache expanded from maxsize=256 to maxsize=512 to reduce evictions under
+  concurrent load (Stage 2 + Stage 3 run simultaneously).
+- Timeout is now enforced at the HTTP transport layer via http_options on the
+  genai.Client constructor. The previous `timeout` kwarg on generate_content() was
+  accepted but never forwarded to the SDK — calls could hang indefinitely.
 - Retry backoff and fallback model logic are unchanged.
 """
 
@@ -26,14 +27,20 @@ _CLIENT: Optional[genai.Client] = None
 # Thread-safe, size-bounded, TTL-aware response cache.
 # maxsize=256 prevents unbounded memory growth.
 # ttl=3600 means cached responses expire after 1 hour.
-_RESPONSE_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
+_RESPONSE_CACHE: TTLCache = TTLCache(maxsize=512, ttl=3600)  # expanded: 256 → 512
 _CACHE_LOCK = threading.Lock()
 
 
 def _get_client() -> genai.Client:
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = genai.Client(api_key=GEMINI_API_KEY)
+        # http_options enforces a 60-second hard deadline at the transport layer.
+        # Previously, generate_content(timeout=60) accepted the arg but never
+        # forwarded it — Gemini calls could silently hang and block thread workers.
+        _CLIENT = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options={"timeout": 60},
+        )
     return _CLIENT
 
 

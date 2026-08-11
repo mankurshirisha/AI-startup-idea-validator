@@ -3,7 +3,6 @@ import os
 import re
 from typing import List, Optional
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -16,7 +15,6 @@ except ImportError:
 from app.gemini_client import generate_content
 from app.logging_config import get_logger
 
-load_dotenv()
 os.environ.setdefault("UVICORN_PORT", "8902")
 
 logger = get_logger("comparison_agent")
@@ -219,102 +217,55 @@ def _build_single_analysis_prompt(
     target_customer: str = "",
     startup_stage: str = "Idea",
 ) -> str:
-    return f"""
-You are a startup mentor with 15 years of experience helping first-time founders.
-You are reviewing a startup and comparing it to the companies already in the market.
-Write everything in plain English. Explain things as if the founder has never read a business textbook.
-Be specific, honest, and direct.
+    cust = target_customer or "General consumers"
+    return f"""\
+Compare startup "{startup}" against competitors.
+Startup: {startup} | {description}
+Industry: {industry} | Target: {cust} | Model: {business_model} | Stage: {startup_stage} | Region: {location}
 
-Here is the startup:
-- Name / Idea: {startup}
-- What it does: {description}
-- Industry: {industry}
-- Who it's for: {target_customer or 'General consumers'}
-- How it makes money: {business_model}
-- Where it's at right now: {startup_stage}
-- Where it's selling: {location}
-
-Here are the competitors already operating in this space:
+Competitors:
 {_compact_competitors(competitors)}
 
-Your job is to compare this startup to its competitors and fill in every field below honestly.
+Rules: Plain English, direct, realistic. No buzzwords (leverage, cutting-edge, game-changing). Personalized recommendations must be exactly ONE sentence (15-25 words) specific to this startup in {location}.
 
-Guidelines before you start:
-- Be realistic. Not every startup is amazing.
-- If something is genuinely strong, say so and explain why.
-- If something is weak or uncertain, say so clearly.
-- Avoid phrases like: leverage, utilize, robust, optimize, cutting-edge, game-changing, ecosystem, unlock, transformative, strategic positioning.
-- Every recommendation should tell the founder what they can actually do — not vague advice.
-- If something is uncertain, say "this is uncertain because..."
-- Do not repeat the same idea in different fields.
-
-Field-by-field guidance:
-- startup_features: List the main things this startup does or offers. Keep it to actual features.
-- feature_comparison: For each competitor, list what features both share, what only the startup has, and what only the competitor has.
-- similarity_scores: How similar is this startup to each competitor? 0 = completely different, 100 = nearly identical.
-- market_gaps: What specific customer needs are competitors NOT meeting that this startup could serve?
-- strategic_recommendations: 3-5 things the founder should do in the next 6 months. Be specific to this startup.
-- threats: Real risks from competitors or the market. Be honest, not alarming.
-- business_insights.strengths: What does this startup genuinely do better than competitors right now?
-- business_insights.weaknesses: What honest gaps or problems does this startup have compared to competitors?
-- business_insights.opportunities: What real doors are open in {location} that competitors are not walking through?
-- business_insights.recommendations: 3-4 concrete steps the founder can take. Reference this startup specifically.
-- final_value_proposition: One clear sentence explaining what makes this startup worth choosing over competitors.
-
-For the 6 personalized_recommendations:
-Write exactly ONE sentence per category, 15 to 25 words long.
-Every sentence must be specific to THIS startup — not generic startup advice.
-Sound like a mentor giving direct advice to this founder.
-Do NOT give advice about AI infrastructure, model fine-tuning, vector databases, GPU scaling, API optimization, or any backend technical implementation unless this startup is explicitly a developer tool.
-Do not repeat the same idea across categories.
-
-Category guidance:
-- innovation: What can this startup add or change to be more unique for {target_customer or 'its customers'} in {industry}?
-- market_demand: How should the founder reach more {target_customer or 'customers'} in {location} or confirm demand?
-- competition: What is the ONE thing this startup should build its positioning around to stand apart from competitors?
-- scalability: What is the most realistic way to grow beyond the first group of customers?
-- technical_feasibility: What should the founder do to make the product more reliable, secure, or easy to use?
-- business_viability: What pricing or revenue approach makes the most sense for {business_model} in {location}?
-
-Return ONLY valid JSON with this exact schema — no markdown, no explanations outside the JSON:
-
+Return ONLY valid JSON (no markdown/fences) matching this exact schema:
 {{
-  "startup_features": ["feature 1", "feature 2"],
+  "startup_features": ["<core feature 1>", "<core feature 2>"],
   "feature_comparison": [
     {{
-      "competitor": "Competitor Name",
-      "common_features": ["feature 1"],
-      "startup_unique_features": ["feature 2"],
-      "competitor_unique_features": ["feature 3"]
+      "competitor": "<competitor name>",
+      "common_features": ["<shared feature>"],
+      "startup_unique_features": ["<startup unique feature>"],
+      "competitor_unique_features": ["<competitor unique feature>"]
     }}
   ],
   "similarity_scores": [
-    {{"competitor": "Competitor Name", "similarity_score": 80.0}}
+    {{"competitor": "<competitor name>", "similarity_score": 85.0}}  // 0.0=different, 100.0=identical
   ],
   "market_gaps": [
     {{
-      "competitor": "Competitor Name",
-      "startup_advantages": ["feature 1"],
-      "competitor_advantages": ["feature 2"],
-      "gap_summary": "..."
+      "competitor": "<competitor name>",
+      "startup_advantages": ["<advantage>"],
+      "competitor_advantages": ["<advantage>"],
+      "gap_summary": "<unmet customer need>"
     }}
   ],
-  "strategic_recommendations": ["..."],
-  "threats": ["..."],
+  "strategic_recommendations": ["<6-month action 1>", "<6-month action 2>"],
+  "threats": ["<honest competitive/market risk 1>", "<risk 2>"],
   "business_insights": {{
-    "strengths": ["..."],
-    "weaknesses": ["..."],
-    "opportunities": ["..."],
-    "recommendations": ["..."]
+    "strengths": ["<genuine strength>"],
+    "weaknesses": ["<honest gap vs competitors>"],
+    "opportunities": ["<unserved door in {location}>"],
+    "recommendations": ["<concrete step for founder>"]
   }},
-  "final_value_proposition": "...",
+  "final_value_proposition": "<1 clear sentence why choose this startup over competitors>",
   "personalized_recommendations": {{
-    "innovation": "<15-25 word sentence>",
-    "market_demand": "<15-25 word sentence>",
-    "competition": "<15-25 word sentence>",
-    "scalability": "<15-25 word sentence>",
-    "technical_feasibility": "<15-25 word sentence>",
-    "business_viability": "<15-25 word sentence>"
+    "innovation": "<15-25 word sentence on unique product tweak for {cust} in {industry}>",
+    "market_demand": "<15-25 word sentence on reaching {cust} in {location}>",
+    "competition": "<15-25 word sentence on core positioning vs competitors>",
+    "scalability": "<15-25 word sentence on realistic scaling for {business_model}>",
+    "technical_feasibility": "<15-25 word sentence on reliability & UX>",
+    "business_viability": "<15-25 word sentence on pricing/revenue model in {location}>"
   }}
 }}
 """

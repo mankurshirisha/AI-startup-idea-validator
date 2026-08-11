@@ -58,72 +58,35 @@ def home():
 # -----------------------------
 
 _MARKET_OPP_PROMPT_TEMPLATE = """\
-You are an experienced startup mentor helping a first-time founder figure out whether their idea has a real market.
-Be direct and honest. Use plain English. Do not use consultant jargon.
+Analyze market opportunity for this startup:
+Startup: {startup_idea} | {description}
+Industry: {industry} | Region: {location} | Target: {target_customers} | Model: {business_model} | Stage: {startup_stage} | Features: {key_features}
 
-Here is the startup you are reviewing:
-- Idea: {startup_idea}
-- What it does: {description}
-- Industry: {industry}
-- Who it's for: {target_customers}
-- Where it's selling: {location}
-- Stage right now: {startup_stage}
-- How it makes money: {business_model}
-- Main features: {key_features}
+Market Context:
+Size: {market_size} | Growth: {growth_rate} | Trends: {market_trends}
+Segments: {customer_segments} | Pain Points: {customer_pain_points}
 
-Market data already found:
-- Estimated market size: {market_size}
-- How fast this market is growing: {growth_rate}
-- What's happening in this market: {market_trends}
-- Customer groups to target: {customer_segments}
-- Problems these customers face: {customer_pain_points}
+Currency Rule: Use local currency for {location} (India: ₹/Crores, USA: $/Billions, UK: £, Europe: €, Japan: ¥, Australia: AUD $, Canada: CAD $).
 
-Your job:
-Look at all this information and give an honest picture of how big the opportunity is for THIS specific startup in {location}.
-
-Currency rule — always use the local currency for {location}:
-- India → INR (₹, in Crores, e.g. ₹50,000 Crore)
-- USA → USD ($, in Billions/Millions)
-- UK → GBP (£)
-- Europe → EUR (€)
-- Japan → JPY (¥)
-- Australia → AUD ($)
-- Canada → CAD ($)
-Never use USD if the country is not USA or Global.
-
-Market size terms (explain in plain numbers):
-- TAM = the entire market if every possible customer bought this product
-- SAM = the part of that market this startup can realistically reach with its model
-- SOM = what this startup could actually capture in the first few years
-
-Score the opportunity from 0 to 100 across these six areas.
-Be realistic — not every startup deserves a high score:
-- Innovation (0-100): Is this idea meaningfully different from what already exists in {location}?
-- Market Demand (0-100): Do real people in {location} need this today, and is that growing?
-- Competition (0-100): How crowded is this space in {location}? (Higher score = less crowded = better for the startup)
-- Scalability (0-100): Can this grow quickly with the {business_model} model without costs exploding?
-- Technical Feasibility (0-100): How hard is it to actually build this at the {startup_stage} stage?
-- Business Viability (0-100): Can this realistically make money from {target_customers} in {location}?
-
-Return ONLY valid JSON in exactly this structure — no markdown or code fences:
+Return ONLY valid JSON (no markdown/fences) matching this exact schema:
 {{
   "marketOpportunity": {{
     "TAM": "<total market size in local currency>",
-    "SAM": "<reachable market in local currency>",
-    "SOM": "<what this startup can capture in local currency>"
+    "SAM": "<serviceable reachable market in local currency>",
+    "SOM": "<obtainable market capture in local currency>"
   }},
-  "marketOpportunityScore": <single overall score, integer 0-100>,
-  "scoreExplanation": "<2-3 sentences explaining this score in plain English — what is strong, what is uncertain, be specific to {location} and {business_model}>",
+  "marketOpportunityScore": 75,  // 0-100 overall integer score based on innovation, demand, competition, scalability, feasibility & viability
+  "scoreExplanation": "<2-3 concise sentences explaining score for {location} and {business_model}>",
   "customerInsights": {{
-    "targetSegments": ["<specific group 1>", "<specific group 2>"],
-    "keyPainPoints": ["<real problem 1>", "<real problem 2>"],
+    "targetSegments": ["<segment 1>", "<segment 2>"],
+    "keyPainPoints": ["<pain point 1>", "<pain point 2>"],
     "marketDemand": "<High | Moderate | Growing | Emerging>"
   }},
   "recommendations": [
-    "<one concrete action the founder can take in {location} right now>",
-    "<another specific action>",
-    "<a third action>",
-    "<a fourth action>"
+    "<action 1 in {location}>",
+    "<action 2>",
+    "<action 3>",
+    "<action 4>"
   ]
 }}
 """
