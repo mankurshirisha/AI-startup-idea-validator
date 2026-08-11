@@ -18,6 +18,7 @@ import hashlib
 import json
 import threading
 import time
+from typing import Optional, Dict, Any
 
 from cachetools import TTLCache
 
@@ -28,6 +29,9 @@ from fastapi.responses import StreamingResponse
 from app.logging_config import get_logger
 from app.models import StartupRequest, BetaBuddyChatRequest
 from app.chat import process_chat_request
+from app.chatbot import BetaBuddyService
+
+_chatbot_service = BetaBuddyService()
 from app.orchestrator import (
     orchestrate_web_search,
     orchestrate_market_opportunity,
@@ -573,8 +577,21 @@ def betabuddy_chat(request: BetaBuddyChatRequest):
     )
 
 
+@app.post(
+    "/api/chat/session",
+    summary="Create a new BetaBuddy chatbot session",
+    description="Initializes a new isolated chatbot session ID.",
+    response_description="JSON object containing generated session_id",
+)
+def create_chat_session(payload: Optional[dict] = None):
+    dashboard_id = payload.get("dashboard_id") if payload else None
+    session_id = _chatbot_service.create_session(dashboard_id=dashboard_id)
+    return {"session_id": session_id}
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="127.0.0.1", port=8000)
+
 
