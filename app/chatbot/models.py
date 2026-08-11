@@ -1,11 +1,11 @@
 """Pydantic Data Models for BetaBuddy Chatbot.
 
-Defines schemas for incoming requests, outgoing responses, and session chat messages.
-Lightweight data containers with zero business logic.
+Defines schemas for incoming requests, outgoing responses, session chat messages,
+and FastAPI Chat API endpoints.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 
@@ -63,4 +63,58 @@ class ChatMessage(BaseModel):
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="ISO 8601 UTC timestamp when message was created.",
+    )
+
+
+class ChatAPIRequest(BaseModel):
+    """Production schema for BetaBuddy POST /api/chat request."""
+
+    session_id: str = Field(
+        ...,
+        min_length=1,
+        description="Active session identifier string.",
+    )
+    dashboard_id: str = Field(
+        ...,
+        min_length=1,
+        description="Startup validation dashboard identifier string.",
+    )
+    question: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="User question text (max 500 chars).",
+    )
+    validation_result: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Startup validation report payload dictionary.",
+    )
+
+
+class ChatAPIResponse(BaseModel):
+    """Production schema for BetaBuddy POST /api/chat response."""
+
+    status: str = Field(
+        ...,
+        description="Execution status ('success' or 'clarification_required').",
+    )
+    response: str = Field(
+        ...,
+        description="Formatted conversational response string.",
+    )
+    intent: str = Field(
+        ...,
+        description="Classified user query intent.",
+    )
+    latency_ms: float = Field(
+        ...,
+        description="End-to-end processing latency in milliseconds.",
+    )
+    conversation_length: int = Field(
+        ...,
+        description="Total retained message exchanges count in session.",
+    )
+    request_id: str = Field(
+        ...,
+        description="Unique UUID4 trace request ID.",
     )

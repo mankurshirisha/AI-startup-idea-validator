@@ -68,6 +68,9 @@ logger = get_logger(__name__)
 
 app = FastAPI(title="AI Startup Idea Validator", version="2.0")
 
+from app.chatbot import router as chatbot_router
+app.include_router(chatbot_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -315,19 +318,22 @@ def validate(request: StartupRequest):
         time.perf_counter() - pipeline_start,
     )
 
+    dashboard_id = f"dash_{cache_key[:12]}"
     result = {
         "status": "success",
+        "dashboard_id": dashboard_id,
         "web_search": web_result,
         "market_opportunity": market_result,
         "competitor_analysis": competitor_result,
         "comparison": comparison_result,
     }
 
-    # ── Store in request-level cache & semantic cache ───────────────────
+    # ── Store in request-level cache, semantic cache & BetaBuddy dashboard store ──
     with _REQUEST_CACHE_LOCK:
         _REQUEST_CACHE[cache_key] = result
     semantic_cache.put(request, result)
-    logger.info("REQUEST CACHE STORED | idea=%s", request.startupIdea)
+    _chatbot_service.save_dashboard(dashboard_id, result)
+    logger.info("REQUEST CACHE & DASHBOARD STORED | dashboard_id=%s | idea=%s", dashboard_id, request.startupIdea)
 
     return result
 

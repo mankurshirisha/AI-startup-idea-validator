@@ -1,7 +1,7 @@
 """Custom Exceptions Module for BetaBuddy Chatbot.
 
 Defines domain-specific exception classes for error handling across session management,
-guardrail checks, dashboard context, and request validation.
+guardrail checks, dashboard context, LLM gateway, and request validation.
 """
 
 
@@ -38,4 +38,25 @@ class GuardrailViolation(ChatbotError):
     """Raised when a user prompt violates security, safety, or domain guardrails."""
 
     def __init__(self, message: str = "Prompt violates safety or domain guardrails"):
+        super().__init__(message)
+
+
+class ChatbotTimeoutError(ChatbotError):
+    """Raised when LLM generation request times out (exceeds 20s)."""
+
+    def __init__(self, message: str = "LLM generation request timed out"):
+        super().__init__(message)
+
+
+class InvalidLLMResponse(ChatbotError):
+    """Raised when LLM response is empty, whitespace-only, or exceeds max length."""
+
+    def __init__(self, message: str = "Invalid or malformed LLM response received"):
+        super().__init__(message)
+
+
+class LLMGenerationError(ChatbotError):
+    """Raised when LLM client encounters an unrecoverable generation failure."""
+
+    def __init__(self, message: str = "LLM generation failed after retries"):
         super().__init__(message)
