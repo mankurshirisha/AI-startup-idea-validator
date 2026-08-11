@@ -1,0 +1,6 @@
+export { BetaBuddy, default } from './BetaBuddy'
+export { ChatButton } from './ChatButton'
+export { ChatWindow } from './ChatWindow'
+export { ChatHeader } from './ChatHeader'
+export { ChatBody } from './ChatBody'
+export { ChatInput } from './ChatInput'

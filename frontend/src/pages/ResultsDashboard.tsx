@@ -14,6 +14,7 @@
  *  9. References (Collapsed at very bottom)
  */
 
+import { lazy, Suspense } from 'react'
 import { motion } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
 import type { ValidationResult } from '@/types/dashboard'
@@ -30,6 +31,9 @@ import {
   RiskAnalysis,
   Sources,
 } from '@/components/dashboard'
+
+// Lazy-load BetaBuddy floating chatbot widget for optimal dashboard performance
+const BetaBuddy = lazy(() => import('@/components/chatbot/BetaBuddy'))
 
 /* ════════════════════════════════════════════════════════
    DEFAULT / PLACEHOLDER FALLBACK DATA
@@ -457,6 +461,11 @@ export default function ResultsDashboard() {
           <div style={{ height: '32px' }} />
         </motion.main>
       </div>
+
+      {/* ── BetaBuddy Floating Chatbot Assistant (Lazy Loaded) ── */}
+      <Suspense fallback={null}>
+        <BetaBuddy />
+      </Suspense>
     </div>
   )
 }
