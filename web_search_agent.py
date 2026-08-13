@@ -84,7 +84,10 @@ def _tavily_search(query: str, depth: str, max_results: int) -> list[dict]:
         )
         results = search.get("results", [])
         return [
-            {"url": r.get("url"), "content": r.get("content")}
+            {
+                "url": r.get("url"),
+                "content": (r.get("content") or "").strip()[:300],  # Truncate content to 300 chars max
+            }
             for r in results
             if r.get("url") and r.get("content")
         ]
@@ -94,38 +97,22 @@ def _tavily_search(query: str, depth: str, max_results: int) -> list[dict]:
 
 
 def _compact_json(items: list[dict]) -> str:
-    """Serialize a list of dicts as compact JSON to reduce Gemini prompt tokens.
-
-    Replaces json.dumps(items, indent=2) which adds ~35% extra whitespace that
-    Gemini still tokenizes. Compact format is semantically identical — the model
-    parses it the same way. Saves ~200-400 tokens per agent call.
-    """
+    """Serialize a list of dicts as compact JSON to reduce Gemini prompt tokens."""
     return "[\n" + ",\n".join(json.dumps(item, ensure_ascii=False) for item in items) + "\n]"
 
 
 def _single_comprehensive_search(query: str) -> list[dict]:
-    """Single advanced Tavily search — replaces the parallel dual-query strategy.
-
-    The previous approach fired basic (1 credit) + advanced (2 credits) on the
-    SAME query simultaneously, consuming 3 Tavily credits per request.
-
-    Advanced search returns higher-quality, more detailed results than basic and
-    is effectively a superset. Requesting advanced with max_results=8 provides
-    equal or better source coverage at 2 credits (33% savings per request).
-
-    Emergency fallback: if advanced returns fewer than 3 results (API error or
-    thin topic), a basic search supplements without blocking the happy path.
-    """
-    results = _tavily_search(query, "advanced", 8)
-    if len(results) < 3:
+    """Single advanced Tavily search with deduplication and max 5 top results."""
+    results = _tavily_search(query, "advanced", 5)
+    if len(results) < 2:
         logger.info(
             "Advanced search returned only %d results; supplementing with basic search",
             len(results),
         )
-        basic = _tavily_search(query, "basic", 8)
+        basic = _tavily_search(query, "basic", 5)
         seen_urls = {r.get("url", "") for r in results}
         results += [r for r in basic if r.get("url", "") not in seen_urls]
-    return results[:8]
+    return results[:5]
 
 
 # ==========================================================

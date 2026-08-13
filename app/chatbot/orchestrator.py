@@ -91,10 +91,10 @@ class BetaBuddyOrchestrator:
         intent_result = self.classifier.classify(user_question)
         logger.debug("Intent classified: '%s' (confidence: %.2f)", intent_result.intent, intent_result.confidence)
 
-        # Check confidence threshold for clarification
-        if intent_result.confidence < self.min_confidence or intent_result.intent == "UNKNOWN":
+        # Check if question is empty or whitespace
+        if not user_question or not user_question.strip():
             empty_retrieved = self.retriever.retrieve(knowledge, intent_result, history)
-            logger.debug("Confidence below threshold (%.2f); clarification required", intent_result.confidence)
+            logger.debug("Empty question received; clarification required")
             return PreparedChatRequest(
                 session_id=session_id,
                 dashboard_id=dashboard_id,

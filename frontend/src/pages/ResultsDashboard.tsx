@@ -464,7 +464,7 @@ export default function ResultsDashboard() {
 
       {/* ── BetaBuddy Floating Chatbot Assistant (Lazy Loaded) ── */}
       <Suspense fallback={null}>
-        <BetaBuddy />
+        <BetaBuddy validationResult={data} />
       </Suspense>
     </div>
   )

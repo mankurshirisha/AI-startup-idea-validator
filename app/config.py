@@ -18,11 +18,10 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Gemini Model
 # ==============================
 
-GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-2.5-flash"
+
 GEMINI_MODEL_FALLBACKS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-2.5-flash-preview-05-20",
 ]
 
 # ==============================

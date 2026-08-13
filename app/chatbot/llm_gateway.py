@@ -83,61 +83,71 @@ class LLMGateway:
             top_p=0.9,
             max_output_tokens=700,
             response_mime_type="text/plain",
-            http_options={"timeout": TIMEOUT_SECONDS},
+            http_options=types.HttpOptions(timeout=20000),  # 20s deadline in ms
         )
 
         start_time = time.perf_counter()
-        logger.debug("LLM request started (model: %s)", GEMINI_MODEL)
+        ordered_models = [
+            model for model in [GEMINI_MODEL, *GEMINI_MODEL_FALLBACKS]
+            if model and model not in {""}
+        ]
+        ordered_models = list(dict.fromkeys(ordered_models))
 
         response_text = ""
         last_exception: Optional[Exception] = None
 
-        for attempt in range(1 + MAX_RETRIES):
-            try:
-                raw_res = client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=user_prompt,
-                    config=config,
-                )
-                if raw_res and raw_res.text:
-                    response_text = raw_res.text.strip()
-                    break
-                else:
-                    raise InvalidLLMResponse("Received empty response from Gemini.")
-            except Exception as exc:
-                last_exception = exc
-                err_str = str(exc).lower()
+        for model_name in ordered_models:
+            for attempt in range(1 + MAX_RETRIES):
+                try:
+                    logger.info("DIAGNOSTICS | Gemini Request Start | Model: %s | Attempt: %d", model_name, attempt + 1)
+                    raw_res = client.models.generate_content(
+                        model=model_name,
+                        contents=user_prompt,
+                        config=config,
+                    )
+                    text = getattr(raw_res, "text", "") or ""
+                    if text and len(text.strip()) > 10:
+                        response_text = text.strip()
+                        logger.info("DIAGNOSTICS | Gemini Response Success | Model: %s | Chars: %d", model_name, len(response_text))
+                        break
+                    else:
+                        logger.warning("Gemini response invalid or < 10 chars. Retrying...")
+                        if attempt < MAX_RETRIES:
+                            time.sleep(0.5)
+                            continue
+                except Exception as exc:
+                    last_exception = exc
+                    err_str = (str(exc) + " " + type(exc).__name__).lower()
 
-                # Check if timeout
-                if "timeout" in err_str or "timed out" in err_str:
-                    logger.warning("LLM request attempt %d timed out", attempt + 1)
-                    if attempt < MAX_RETRIES:
-                        time.sleep(0.5)
-                        continue
-                    raise ChatbotTimeoutError("LLM generation request timed out after 20s.") from exc
+                    is_retryable = any(
+                        token in err_str
+                        for token in ("timeout", "readtimeout", "connecttimeout", "429", "503", "resource_exhausted", "unavailable")
+                    )
 
-                # Check if retryable status (429 Rate Limit, 503 Service Unavailable)
-                if "429" in err_str or "503" in err_str or "resource_exhausted" in err_str or "unavailable" in err_str:
-                    logger.warning("LLM request attempt %d hit retryable status: %s", attempt + 1, exc)
-                    if attempt < MAX_RETRIES:
-                        time.sleep(0.5)
-                        continue
-                    raise LLMGenerationError(f"LLM call failed with status error: {exc}") from exc
+                    if is_retryable:
+                        logger.warning("LLM model %s attempt %d failed (%s). Retrying/fallback...", model_name, attempt + 1, type(exc).__name__)
+                        if attempt < MAX_RETRIES:
+                            time.sleep(0.5)
+                            continue
+                        # Break inner retry loop to try next fallback model
+                        break
 
-                # Non-retryable validation or client error
-                logger.error("LLM request failed with non-retryable error: %s", exc)
-                raise LLMGenerationError(f"LLM generation failed: {exc}") from exc
+                    logger.error("LLM request failed with non-retryable error: %s", exc)
+                    raise LLMGenerationError(f"LLM generation failed: {exc}") from exc
+
+            if response_text:
+                break
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
         # Validate Output
-        if not response_text or not response_text.strip():
-            logger.error("Output validation failed: empty or whitespace-only response")
-            raise InvalidLLMResponse("LLM response was empty or whitespace-only.")
+        if not response_text or len(response_text) <= 10:
+            logger.error("Output validation failed: empty or <= 10 chars response")
+            raise InvalidLLMResponse("LLM response was empty or <= 10 characters.")
 
         if len(response_text) > MAX_RESPONSE_LENGTH:
-            logger.error("Output validation failed: response length %d exceeds max %d", len(response_text), MAX_RESPONSE_LENGTH)
-            raise InvalidLLMResponse(f"LLM response length ({len(response_text)}) exceeded limit of {MAX_RESPONSE_LENGTH} characters.")
+            logger.warning("Response length %d exceeds max %d; truncating safely", len(response_text), MAX_RESPONSE_LENGTH)
+            response_text = response_text[:MAX_RESPONSE_LENGTH]
 
-        logger.debug("LLM request finished (latency: %.2f ms, output chars: %d)", elapsed_ms, len(response_text))
+        logger.info("DIAGNOSTICS | LLM Request Finished | Latency: %.2f ms | Output Chars: %d", elapsed_ms, len(response_text))
         return LLMResponse(response_text=response_text, latency_ms=elapsed_ms)

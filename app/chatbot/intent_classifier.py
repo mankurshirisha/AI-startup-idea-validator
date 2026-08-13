@@ -112,6 +112,36 @@ DIRECT_KEYWORDS: Dict[str, List[str]] = {
         "revenue model",
         "how we make money",
     ],
+    "GENERAL_BUSINESS_KNOWLEDGE": [
+        "porter five forces",
+        "porter's five forces",
+        "tam sam som",
+        "cac vs ltv",
+        "cac and ltv",
+        "funding options",
+        "customer retention",
+        "pricing strategy",
+        "unit economics",
+        "go to market",
+        "gtm strategy",
+        "product market fit",
+        "burn rate",
+        "runway",
+        "pitch deck",
+        "investor pitch",
+    ],
+    "FOLLOW_UP": [
+        "explain more",
+        "tell me more",
+        "why",
+        "why is that",
+        "can you simplify",
+        "simplify that",
+        "simplify",
+        "compare with competitors",
+        "compare competitors",
+        "elaborate",
+    ],
     "GENERAL_EXPLANATION": [
         "explain dashboard",
         "explain my dashboard",
@@ -131,6 +161,8 @@ STRONG_SYNONYMS: Dict[str, List[str]] = {
     "BUSINESS_MODEL": ["pricing strategy", "revenue", "monetize"],
     "EXECUTIVE_SUMMARY": ["brief", "pitch", "about startup"],
     "VALIDATION_SCORE": ["points", "grade", "validation rating"],
+    "GENERAL_BUSINESS_KNOWLEDGE": ["funding", "retention", "customer acquisition", "valuation", "seed round"],
+    "FOLLOW_UP": ["how come", "what about", "more details"],
 }
 
 WEAK_SYNONYMS: Dict[str, List[str]] = {
@@ -142,6 +174,7 @@ WEAK_SYNONYMS: Dict[str, List[str]] = {
     "BUSINESS_MODEL": ["cost", "charge"],
     "EXECUTIVE_SUMMARY": ["describe", "details"],
     "GENERAL_EXPLANATION": ["explain", "understand", "show", "tell me"],
+    "GENERAL_BUSINESS_KNOWLEDGE": ["strategy", "growth", "business", "market", "sales"],
 }
 
 
@@ -187,6 +220,11 @@ class IntentClassifier:
                     logger.info("Weak synonym match hit: '%s' -> %s (0.75)", phrase, intent)
                     return IntentResult(intent=intent, confidence=0.75)
 
-        # Fallback UNKNOWN
+        # Fallback for general business / startup questions
+        if len(tokens) >= 2:
+            logger.info("General question fallback: '%s' -> GENERAL_BUSINESS_KNOWLEDGE (0.70)", question[:30])
+            return IntentResult(intent="GENERAL_BUSINESS_KNOWLEDGE", confidence=0.70)
+
+        # Fallback UNKNOWN for single unrecognized words or invalid queries
         logger.info("No matching intent found for question: '%s'", question[:30])
         return IntentResult(intent="UNKNOWN", confidence=0.00)

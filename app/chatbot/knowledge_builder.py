@@ -160,22 +160,26 @@ class DashboardKnowledgeBuilder:
                     })
 
         # 5. Market Opportunity
+        raw_frontend_market = _clean_dict(validation_result.get("market"))
         raw_mkt_opp = _clean_dict(market_opp.get("marketOpportunity"))
         industry_insights = _clean_dict(market_opp.get("industryInsights"))
         customer_insights = _clean_dict(market_opp.get("customerInsights"))
 
         market_opportunity = {
-            "tam": _clean_str(web_search.get("market_size") or raw_mkt_opp.get("TAM")),
-            "sam": _clean_str(raw_mkt_opp.get("SAM")),
-            "som": _clean_str(raw_mkt_opp.get("SOM")),
-            "growth_rate": _clean_str(web_search.get("growth_rate") or industry_insights.get("growthRate")),
-            "trends": _clean_list(web_search.get("market_trends") or industry_insights.get("trends")),
+            "market_size": _clean_str(raw_frontend_market.get("marketSize") or web_search.get("market_size") or raw_mkt_opp.get("TAM")),
+            "tam": _clean_str(raw_frontend_market.get("tam") or raw_mkt_opp.get("TAM") or web_search.get("market_size")),
+            "sam": _clean_str(raw_frontend_market.get("sam") or raw_mkt_opp.get("SAM")),
+            "som": _clean_str(raw_frontend_market.get("som") or raw_mkt_opp.get("SOM")),
+            "growth_rate": _clean_str(raw_frontend_market.get("growthRate") or web_search.get("growth_rate") or industry_insights.get("growthRate")),
+            "industry": _clean_str(raw_frontend_market.get("industry") or web_search.get("industry") or industry_insights.get("industry")),
+            "trends": _clean_list(raw_frontend_market.get("trends") or web_search.get("market_trends") or industry_insights.get("trends")),
             "customer_segments": _clean_list(customer_insights.get("targetSegments")),
         }
 
         # 6. Business Risks
         business_risks = _clean_list(
             validation_result.get("risks")
+            or validation_result.get("riskAnalysis")
             or comparison.get("threats")
             or swot.get("threats")
         )
@@ -197,7 +201,7 @@ class DashboardKnowledgeBuilder:
         business_model = {
             "idea": _clean_str(validation_result.get("idea") or web_search.get("startupIdea")),
             "description": _clean_str(validation_result.get("description") or web_search.get("description")),
-            "industry": _clean_str(web_search.get("industry") or industry_insights.get("industry")),
+            "industry": _clean_str(raw_frontend_market.get("industry") or web_search.get("industry") or industry_insights.get("industry")),
             "country": _clean_str(web_search.get("target_country") or market_opp.get("location")),
             "target_customer": _clean_str(web_search.get("target_customer")),
             "business_model_type": _clean_str(web_search.get("business_model")),

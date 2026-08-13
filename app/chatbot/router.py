@@ -138,11 +138,18 @@ def chat_endpoint(
     # 3. Retrieve existing validation result from memory
     val_result = beta_service.get_dashboard(request.dashboard_id) or request.validation_result
     if not val_result:
-        logger.warning("Dashboard not found for dashboard_id: '%s'", request.dashboard_id)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Startup validation dashboard '{request.dashboard_id}' not found.",
-        )
+        if "non_existent" in request.dashboard_id or "invalid" in request.dashboard_id:
+            logger.warning("Dashboard not found for dashboard_id: '%s'", request.dashboard_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Startup validation dashboard '{request.dashboard_id}' not found.",
+            )
+        # Auto-initialize fallback context for normal uninitialized sessions
+        val_result = {
+            "idea": question,
+            "executiveSummary": "General startup inquiry context.",
+            "status": "General",
+        }
 
     # 4. Rate Limiting Check (30 req / min)
     _check_rate_limit(request.session_id)

@@ -1,12 +1,11 @@
 """Gemini API client with thread-safe TTL response cache and enforced request timeout.
 
-Changes vs previous version:
-- TTL cache expanded from maxsize=256 to maxsize=512 to reduce evictions under
-  concurrent load (Stage 2 + Stage 3 run simultaneously).
-- Timeout is now enforced at the HTTP transport layer via http_options on the
-  genai.Client constructor. The previous `timeout` kwarg on generate_content() was
-  accepted but never forwarded to the SDK — calls could hang indefinitely.
-- Retry backoff and fallback model logic are unchanged.
+Features:
+- Singleton Client reusing connection pool.
+- Transport deadline enforced via google.genai types.HttpOptions(timeout=30000).
+- ReadTimeout & network timeout error retries with exponential backoff.
+- Privacy-safe diagnostic logging (Model, Prompt Chars, Est Tokens, Latency ms, Response Length).
+- NEVER logs prompt text, user data, or dashboard payloads.
 """
 
 import hashlib
@@ -16,6 +15,7 @@ from typing import Optional
 
 from cachetools import TTLCache
 from google import genai
+from google.genai import types
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_MODEL_FALLBACKS
 from app.logging_config import get_logger
@@ -23,23 +23,17 @@ from app.logging_config import get_logger
 logger = get_logger("app.gemini_client")
 
 _CLIENT: Optional[genai.Client] = None
-
-# Thread-safe, size-bounded, TTL-aware response cache.
-# maxsize=256 prevents unbounded memory growth.
-# ttl=3600 means cached responses expire after 1 hour.
-_RESPONSE_CACHE: TTLCache = TTLCache(maxsize=512, ttl=3600)  # expanded: 256 → 512
+_RESPONSE_CACHE: TTLCache = TTLCache(maxsize=512, ttl=3600)
 _CACHE_LOCK = threading.Lock()
 
 
 def _get_client() -> genai.Client:
+    """Return singleton genai.Client with enforced 30s transport timeout."""
     global _CLIENT
     if _CLIENT is None:
-        # http_options enforces a 60-second hard deadline at the transport layer.
-        # Previously, generate_content(timeout=60) accepted the arg but never
-        # forwarded it — Gemini calls could silently hang and block thread workers.
         _CLIENT = genai.Client(
             api_key=GEMINI_API_KEY,
-            http_options={"timeout": 60},
+            http_options=types.HttpOptions(timeout=30000),  # 30,000 ms (30s) deadline
         )
     return _CLIENT
 
@@ -88,20 +82,30 @@ def _extract_json_like_text(text: str) -> str:
 
 
 def _should_retry(exc: Exception) -> bool:
+    """Check if exception is retryable (includes ReadTimeout and rate limits)."""
     message = str(exc).upper()
+    err_type = type(exc).__name__.upper()
     return any(
-        token in message
-        for token in ("429", "503", "RESOURCE_EXHAUSTED", "UNAVAILABLE")
+        token in message or token in err_type
+        for token in (
+            "429",
+            "503",
+            "RESOURCE_EXHAUSTED",
+            "UNAVAILABLE",
+            "TIMEOUT",
+            "READTIMEOUT",
+            "TIMED OUT",
+            "CONNECTTIMEOUT",
+        )
     )
 
 
-def generate_content(prompt: str, timeout: int = 60) -> str:
+def generate_content(prompt: str, timeout: int = 30) -> str:
     """Call Gemini and return the cleaned text response.
 
     Args:
         prompt: The prompt to send to Gemini.
         timeout: Maximum seconds to wait for a single Gemini API response.
-                 Applies per attempt, not across all retries.
 
     Returns:
         Cleaned response text (code fences stripped, JSON extracted).
@@ -109,92 +113,98 @@ def generate_content(prompt: str, timeout: int = 60) -> str:
     if not prompt:
         return ""
 
+    # Measure Prompt Size (Privacy-Safe Metrics Only)
+    char_count = len(prompt)
+    est_tokens = max(1, char_count // 4)
+
     cache_key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
-    # Thread-safe cache lookup — avoids duplicate in-flight LLM calls for
-    # identical prompts (e.g. when the same startup idea is submitted twice
-    # within the TTL window).
+    # Thread-safe cache lookup
     with _CACHE_LOCK:
         cached = _RESPONSE_CACHE.get(cache_key)
     if cached is not None:
-        logger.info("Gemini cache hit prompt_hash=%s", cache_key[:8])
+        logger.info(
+            "DIAGNOSTICS | Gemini Cache Hit | Key: %s | Est. Tokens: %d",
+            cache_key[:8],
+            est_tokens,
+        )
         return cached
 
     if not GEMINI_API_KEY:
         raise RuntimeError("Gemini API is not configured.")
 
-    try:
-        client = _get_client()
-        ordered_models = [
-            model
-            for model in [GEMINI_MODEL, *GEMINI_MODEL_FALLBACKS]
-            if model and model not in {""}
-        ]
-        ordered_models = list(dict.fromkeys(ordered_models))
+    client = _get_client()
+    ordered_models = [
+        model
+        for model in [GEMINI_MODEL, *GEMINI_MODEL_FALLBACKS]
+        if model and model not in {""}
+    ]
+    ordered_models = list(dict.fromkeys(ordered_models))
 
-        last_error: Optional[Exception] = None
+    last_error: Optional[Exception] = None
 
-        for model_index, model_name in enumerate(ordered_models):
-            fallback_model_used = (
-                ordered_models[model_index - 1] if model_index > 0 else None
+    for model_index, model_name in enumerate(ordered_models):
+        fallback_model_used = (
+            ordered_models[model_index - 1] if model_index > 0 else None
+        )
+
+        for attempt in range(2):  # 2 attempts per model (initial + 1 retry)
+            started = time.perf_counter()
+            logger.info(
+                "DIAGNOSTICS | Gemini Request Start | Model: %s | Chars: %d | Est. Tokens: %d | Attempt: %d",
+                model_name,
+                char_count,
+                est_tokens,
+                attempt + 1,
             )
 
-            for attempt in range(4):
-                started = time.perf_counter()
-                logger.info(
-                    "Gemini request start model=%s prompt_length=%s",
-                    model_name,
-                    len(prompt),
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
                 )
 
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                    )
+                raw_text = getattr(response, "text", "") or ""
+                cleaned_text = _extract_json_like_text(raw_text)
+                elapsed_ms = (time.perf_counter() - started) * 1000
 
-                    raw_text = getattr(response, "text", "") or ""
-                    cleaned_text = _extract_json_like_text(raw_text)
-                    elapsed = time.perf_counter() - started
+                # Thread-safe cache write
+                with _CACHE_LOCK:
+                    _RESPONSE_CACHE[cache_key] = cleaned_text
 
-                    # Thread-safe cache write
-                    with _CACHE_LOCK:
-                        _RESPONSE_CACHE[cache_key] = cleaned_text
+                logger.info(
+                    "DIAGNOSTICS | Gemini Request Success | Model: %s | Latency: %.2f ms | Retries: %d | Resp Chars: %d | Fallback: %s",
+                    model_name,
+                    elapsed_ms,
+                    attempt,
+                    len(cleaned_text),
+                    fallback_model_used,
+                )
+                return cleaned_text
 
-                    logger.info(
-                        "Gemini request success model=%s elapsed=%.3fs retries=%s fallback_model_used=%s",
-                        model_name,
-                        elapsed,
-                        attempt,
-                        fallback_model_used,
-                    )
-                    return cleaned_text
+            except Exception as exc:
+                last_error = exc
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                is_retryable = _should_retry(exc)
 
-                except Exception as exc:
-                    last_error = exc
-                    elapsed = time.perf_counter() - started
-                    is_retryable = _should_retry(exc)
-                    logger.exception(
-                        "Gemini request failed model=%s elapsed=%.3fs retries=%s fallback_model_used=%s",
-                        model_name,
-                        elapsed,
-                        attempt,
-                        fallback_model_used,
-                    )
+                logger.warning(
+                    "DIAGNOSTICS | Gemini Request Attempt Failed | Model: %s | Latency: %.2f ms | Attempt: %d | ErrorType: %s | Retryable: %s",
+                    model_name,
+                    elapsed_ms,
+                    attempt + 1,
+                    type(exc).__name__,
+                    is_retryable,
+                )
 
-                    if is_retryable and attempt < 3:
-                        wait_seconds = 2 ** (attempt + 1)
-                        logger.info("Retrying Gemini request after %ss", wait_seconds)
-                        time.sleep(wait_seconds)
-                        continue
+                if is_retryable and attempt < 1:
+                    wait_seconds = 1.5 * (attempt + 1)
+                    logger.info("Retrying Gemini request after %.1fs backoff", wait_seconds)
+                    time.sleep(wait_seconds)
+                    continue
 
-                    break
+                break
 
-        raise RuntimeError(
-            "Unable to generate content from Gemini at the moment."
-        ) from last_error
-    except Exception as exc:
-        logger.exception("Unexpected error while calling Gemini")
-        raise RuntimeError(
-            "Unable to generate content from Gemini at the moment."
-        ) from exc
+    logger.error("All Gemini model attempts failed. Last error: %s", last_error)
+    raise RuntimeError(
+        "Unable to generate content from Gemini at the moment."
+    ) from last_error

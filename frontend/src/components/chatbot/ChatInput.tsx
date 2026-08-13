@@ -54,9 +54,9 @@ export const ChatInput: React.FC<ChatInputProps> = React.memo(({
   }
 
   return (
-    <div className="p-3.5 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
-      <form onSubmit={onSubmit} className="flex items-end gap-2">
-        <div className="relative flex-1">
+    <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex-shrink-0">
+      <form onSubmit={onSubmit} className="flex items-center gap-2">
+        <div className="relative flex-1 flex items-center">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -67,7 +67,7 @@ export const ChatInput: React.FC<ChatInputProps> = React.memo(({
             disabled={disabled}
             maxLength={MAX_CHARS}
             aria-label="Ask BetaBuddy about your startup validation"
-            className="w-full pl-4 pr-10 py-2.5 rounded-2xl text-xs bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/10 transition-all font-medium resize-none max-h-32 custom-scrollbar disabled:opacity-50"
+            className="w-full pl-3.5 pr-8 py-2 rounded-2xl text-xs bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/10 transition-all font-medium resize-none max-h-[120px] custom-scrollbar disabled:opacity-50"
           />
 
           {/* Character counter (Appears after 350 characters) */}
@@ -82,20 +82,20 @@ export const ChatInput: React.FC<ChatInputProps> = React.memo(({
             <button
               type="button"
               onClick={() => onChange('')}
-              className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-semibold cursor-pointer"
+              className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-semibold cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        {/* Send Button Micro-interactions (hover scale 1.05, click scale 0.95) */}
+        {/* Send Button Micro-interactions — Vertically Centered */}
         <motion.button
           type="submit"
           disabled={!hasText || disabled}
           whileHover={{ scale: hasText ? 1.05 : 1 }}
           whileTap={{ scale: hasText ? 0.95 : 1 }}
-          className="p-2.5 mb-0.5 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="p-2.5 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white shadow-xs hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           aria-label="Send message"
         >
           <Send className="w-4 h-4" />

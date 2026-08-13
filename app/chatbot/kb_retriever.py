@@ -129,15 +129,17 @@ class KnowledgeRetriever:
             if knowledge.business_model:
                 raw_context["business_model"] = knowledge.business_model
 
-        elif intent == "GENERAL_EXPLANATION":
+        elif intent in ("GENERAL_EXPLANATION", "GENERAL_BUSINESS_KNOWLEDGE", "FOLLOW_UP", "UNKNOWN"):
             if knowledge.executive_summary:
                 raw_context["executive_summary"] = knowledge.executive_summary
             if knowledge.validation_score:
                 raw_context["validation_score"] = knowledge.validation_score
-            if knowledge.recommendations:
-                raw_context["recommendations"] = knowledge.recommendations
             if knowledge.swot:
                 raw_context["swot"] = knowledge.swot
+            if knowledge.market_opportunity:
+                raw_context["market_opportunity"] = knowledge.market_opportunity
+            if knowledge.recommendations:
+                raw_context["recommendations"] = knowledge.recommendations
 
         # Clean metadata, IDs, timestamps, and empty fields
         cleaned_context = _clean_context(raw_context)

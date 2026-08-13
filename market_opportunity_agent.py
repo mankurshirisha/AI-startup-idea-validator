@@ -104,19 +104,19 @@ def run_market_opportunity_agent(request: MarketOpportunityRequest) -> dict:
     logger.info("Market opportunity request received for location: %s", request.location)
 
     prompt = _MARKET_OPP_PROMPT_TEMPLATE.format(
-        startup_idea=request.startupIdea,
-        description=request.description or request.startupIdea,
-        industry=request.industry,
-        target_customers=", ".join(request.targetCustomer) if request.targetCustomer else "General consumers",
+        startup_idea=request.startupIdea[:150],
+        description=(request.description or request.startupIdea)[:300],
+        industry=request.industry[:80],
+        target_customers=", ".join((request.targetCustomer or [])[:5]) if request.targetCustomer else "General consumers",
         location=request.location or "Global",
         startup_stage=request.startupStage or "Idea",
         business_model=request.businessModel or "B2B",
-        key_features=", ".join(request.keyFeatures) if request.keyFeatures else "Standard product features",
+        key_features=", ".join((request.keyFeatures or [])[:5]) if request.keyFeatures else "Standard features",
         market_size=request.marketAnalysis.marketSize or "N/A",
         growth_rate=request.marketAnalysis.growthRate or "High",
-        market_trends=", ".join(request.marketAnalysis.marketTrends) or "Not specified",
-        customer_segments=", ".join(request.customerAnalysis.customerSegments) or "Primary users",
-        customer_pain_points=", ".join(request.customerAnalysis.customerPainPoints) or "Cost & efficiency",
+        market_trends=", ".join((request.marketAnalysis.marketTrends or [])[:5]) or "Not specified",
+        customer_segments=", ".join((request.customerAnalysis.customerSegments or [])[:5]) or "Primary users",
+        customer_pain_points=", ".join((request.customerAnalysis.customerPainPoints or [])[:5]) or "Cost & efficiency",
     )
 
     # Defaults in case of fallback

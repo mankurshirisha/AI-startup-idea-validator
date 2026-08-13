@@ -267,9 +267,9 @@ def run_competitor_discovery_agent(
         seen_urls: set[str] = set()
         processed_results: list[dict] = []
 
-        for result in raw_results:
+        for result in raw_results[:5]:
             source_url = result.get("url", "")
-            content = result.get("content", "")
+            content = (result.get("content") or "").strip()[:300]  # Truncate content to max 300 chars
 
             if source_url and source_url not in seen_urls:
                 seen_urls.add(source_url)
@@ -284,24 +284,20 @@ def run_competitor_discovery_agent(
             ]
 
     # ==========================================================
-    # GEMINI (prompt unchanged — same output quality)
+    # GEMINI
     # ==========================================================
 
     # ── Seed competitor names from Agent 1 (Web Search) ──────────────────────
-    # Agent 1's Gemini call already extracted real_competitors[] from web results.
-    # Injecting them here focuses this agent's Gemini budget on ENRICHMENT
-    # (descriptions, pricing, websites) rather than re-discovering names.
     seed_section = ""
     if seed_competitor_names and isinstance(seed_competitor_names, list):
         valid_names = [
             str(n).strip() for n in seed_competitor_names if n and str(n).strip()
-        ]
+        ][:5]  # Limit to top 5 seed competitors
         if valid_names:
             seed_section = (
-                f"\nPRE-IDENTIFIED COMPETITORS from web search — MUST be included:\n"
+                f"\nPRE-IDENTIFIED COMPETITORS (max 5):\n"
                 f"{', '.join(valid_names)}\n"
                 f"Enrich each with description, website, pricing, and features.\n"
-                f"Also identify any additional competitors not listed above.\n"
             )
             logger.info(
                 "Seeding competitor prompt with %d pre-identified names: %s",

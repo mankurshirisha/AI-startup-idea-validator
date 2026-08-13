@@ -195,15 +195,16 @@ def _fallback_personalized_recommendations(
 
 
 def _compact_competitors(competitors: List[dict]) -> str:
-    """Serialize competitor list without indent=2 to reduce Gemini prompt tokens.
-
-    Replaces json.dumps(competitors, indent=2) which added ~35% extra whitespace
-    characters that Gemini still has to tokenize. Compact JSON is semantically
-    identical — the model parses it the same way.
-    """
+    """Serialize competitor list compactly (top 5 max, truncated descriptions)."""
     lines = []
-    for c in competitors:
-        lines.append(json.dumps(c, ensure_ascii=False))
+    for c in (competitors or [])[:5]:
+        compacted = {
+            "name": c.get("name") or "Unknown",
+            "description": (c.get("description") or "")[:150],
+            "key_features": (c.get("key_features") or [])[:3],
+            "pricing": c.get("pricing") or "N/A",
+        }
+        lines.append(json.dumps(compacted, ensure_ascii=False))
     return "[\n" + ",\n".join(lines) + "\n]"
 
 
