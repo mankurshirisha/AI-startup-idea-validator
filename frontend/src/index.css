@@ -24,6 +24,12 @@
   padding: 0;
 }
 
+:focus-visible {
+  outline: 2px solid #3b3bdb;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 html {
   font-family: 'DM Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px;

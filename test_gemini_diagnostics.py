@@ -12,7 +12,15 @@ from app.chatbot.prompt_builder import PromptPackage
 from web_search_agent import _compact_json
 from comparison_agent import _compact_competitors
 
+import pytest
+
+RUN_LIVE = os.getenv("RUN_LIVE_GEMINI_TESTS") == "1"
+
 # 1. Independent Minimal Diagnostic Test (Live Gemini Request)
+@pytest.mark.skipif(
+    not RUN_LIVE,
+    reason="Live Gemini API tests are skipped by default during automated testing. Set RUN_LIVE_GEMINI_TESTS=1 to run manually."
+)
 def test_live_gemini_connection():
     print("--- 1. Testing Live Gemini API Connection ---")
     prompt = "Reply with exactly: Gemini connection successful"
@@ -22,6 +30,10 @@ def test_live_gemini_connection():
     print("[OK] Live Gemini connection test PASSED!")
 
 # 2. Test LLMGateway Live Request
+@pytest.mark.skipif(
+    not RUN_LIVE,
+    reason="Live Gemini API tests are skipped by default during automated testing. Set RUN_LIVE_GEMINI_TESTS=1 to run manually."
+)
 def test_llm_gateway_live_request():
     print("\n--- 2. Testing LLMGateway Live Generation ---")
     gateway = LLMGateway()
@@ -65,6 +77,7 @@ def test_search_snippet_truncation():
     print(f"[OK] 10 competitors compacted to top 5.")
 
 if __name__ == "__main__":
+    os.environ["RUN_LIVE_GEMINI_TESTS"] = "1"
     test_live_gemini_connection()
     test_llm_gateway_live_request()
     test_singleton_client()

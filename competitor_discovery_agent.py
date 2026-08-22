@@ -197,7 +197,50 @@ def _tavily_competitor_search(query: str, location: str) -> list[dict]:
             detail="Unable to retrieve competitor data from the search service.",
         )
 
-    return merged
+def _build_unavailable_competitor_result(
+    startup_idea: str,
+    industry: str,
+    location: str,
+    seed_competitor_names: list = None,
+    processed_results: list = None,
+) -> dict:
+    """Return a clean structured fallback result when Gemini is temporarily unavailable."""
+    competitors = []
+    if seed_competitor_names and isinstance(seed_competitor_names, list):
+        for name in seed_competitor_names[:5]:
+            if name and isinstance(name, str) and name.strip():
+                competitors.append({
+                    "name": name.strip(),
+                    "website": None,
+                    "description": f"Pre-identified competitor operating in {industry}.",
+                    "key_features": ["Industry Competitor"],
+                    "target_customers": "Target Users",
+                    "pricing": "N/A",
+                    "source": None,
+                })
+
+    if not competitors and processed_results and isinstance(processed_results, list):
+        for res in processed_results[:3]:
+            url = res.get("url", "")
+            if url and "google" not in url:
+                competitors.append({
+                    "name": url.split("//")[-1].split("/")[0].replace("www.", "").capitalize(),
+                    "website": url,
+                    "description": (res.get("content") or f"Competitor in {industry}")[:150],
+                    "key_features": ["Market Competitor"],
+                    "target_customers": "Target Users",
+                    "pricing": "N/A",
+                    "source": url,
+                })
+
+    return {
+        "status": "temporarily_unavailable",
+        "startupIdea": startup_idea,
+        "industry": industry,
+        "location": location,
+        "competitors": competitors,
+        "message": "Competitor analysis is temporarily unavailable. Other validation results are still available.",
+    }
 
 
 def run_competitor_discovery_agent(
@@ -332,52 +375,6 @@ Return ONLY valid JSON (no markdown/fences) matching this exact schema:
     ]
 }}
 """
-
-def _build_unavailable_competitor_result(
-    startup_idea: str,
-    industry: str,
-    location: str,
-    seed_competitor_names: list = None,
-    processed_results: list = None,
-) -> dict:
-    """Return a clean structured fallback result when Gemini is temporarily unavailable."""
-    competitors = []
-    if seed_competitor_names and isinstance(seed_competitor_names, list):
-        for name in seed_competitor_names[:5]:
-            if name and isinstance(name, str) and name.strip():
-                competitors.append({
-                    "name": name.strip(),
-                    "website": None,
-                    "description": f"Pre-identified competitor operating in {industry}.",
-                    "key_features": ["Industry Competitor"],
-                    "target_customers": "Target Users",
-                    "pricing": "N/A",
-                    "source": None,
-                })
-
-    if not competitors and processed_results and isinstance(processed_results, list):
-        for res in processed_results[:3]:
-            url = res.get("url", "")
-            if url and "google" not in url:
-                competitors.append({
-                    "name": url.split("//")[-1].split("/")[0].replace("www.", "").capitalize(),
-                    "website": url,
-                    "description": (res.get("content") or f"Competitor in {industry}")[:150],
-                    "key_features": ["Market Competitor"],
-                    "target_customers": "Target Users",
-                    "pricing": "N/A",
-                    "source": url,
-                })
-
-    return {
-        "status": "temporarily_unavailable",
-        "startupIdea": startup_idea,
-        "industry": industry,
-        "location": location,
-        "competitors": competitors,
-        "message": "Competitor analysis is temporarily unavailable. Other validation results are still available.",
-    }
-
 
     try:
         logger.info("Starting Gemini competitor analysis request")

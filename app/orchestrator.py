@@ -113,56 +113,52 @@ def _orchestrate_generic(
     **kwargs,
 ) -> dict:
     """Generic orchestrator wrapper with TTL caching and singleflight in-flight deduplication."""
-    with _ORCHESTRATOR_LOCK:
-        cached = cache.get(cache_key)
-        if cached is not None:
-            logger.info(
-                "[ORCHESTRATOR] Cache Hit | Agent: %s | Key: %s...", agent_name, cache_key[:12]
-            )
-            logger.info(
-                "[ORCHESTRATOR] Agent Skipped | Agent: %s | Reason: Reusing cached structured output", agent_name
-            )
-            return cached
+    my_event: Optional[threading.Event] = None
 
-        if cache_key in _IN_FLIGHT_EVENTS:
-            event = _IN_FLIGHT_EVENTS[cache_key]
+    while True:
+        with _ORCHESTRATOR_LOCK:
+            # 1. Return cached result immediately if available
+            cached = cache.get(cache_key)
+            if cached is not None:
+                logger.info(
+                    "[ORCHESTRATOR] Cache Hit | Agent: %s | Key: %s...", agent_name, cache_key[:12]
+                )
+                logger.info(
+                    "[ORCHESTRATOR] Agent Skipped | Agent: %s | Reason: Reusing cached structured output", agent_name
+                )
+                return cached
+
+            # 2. Check if an in-flight request is already running for this key
+            existing_event = _IN_FLIGHT_EVENTS.get(cache_key)
+            if existing_event is None:
+                # We are the primary worker thread for this key — register new event
+                my_event = threading.Event()
+                _IN_FLIGHT_EVENTS[cache_key] = my_event
+                logger.info(
+                    "[ORCHESTRATOR] Cache Miss | Agent: %s | Key: %s...", agent_name, cache_key[:12]
+                )
+                logger.info("[ORCHESTRATOR] Agent Executed | Agent: %s", agent_name)
+                break
+
             logger.info(
                 "[ORCHESTRATOR] In-Flight Execution Detected | Agent: %s | Key: %s... | Waiting for in-flight request to complete",
                 agent_name,
                 cache_key[:12],
             )
-            # Release lock while waiting for the in-flight request
-            # so other threads can still access the orchestrator
-            pass
 
-    # Handle in-flight wait outside lock block to prevent deadlock
-    with _ORCHESTRATOR_LOCK:
-        event = _IN_FLIGHT_EVENTS.get(cache_key)
+        # 3. Wait for the existing in-flight request to finish (outside lock block)
+        existing_event.wait(timeout=120)
 
-    if event is not None and cache_key in _IN_FLIGHT_EVENTS:
-        event.wait(timeout=120)
         with _ORCHESTRATOR_LOCK:
             cached_after = cache.get(cache_key)
-        if cached_after is not None:
-            logger.info(
-                "[ORCHESTRATOR] Agent Skipped | Agent: %s | Reason: Returned result from completed in-flight request",
-                agent_name,
-            )
-            return cached_after
+            if cached_after is not None:
+                logger.info(
+                    "[ORCHESTRATOR] Agent Skipped | Agent: %s | Reason: Returned result from completed in-flight request",
+                    agent_name,
+                )
+                return cached_after
 
-    # Register as the primary executing thread for this cache key
-    event = threading.Event()
-    with _ORCHESTRATOR_LOCK:
-        # Double check cache
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return cached
-        _IN_FLIGHT_EVENTS[cache_key] = event
-        logger.info(
-            "[ORCHESTRATOR] Cache Miss | Agent: %s | Key: %s...", agent_name, cache_key[:12]
-        )
-        logger.info("[ORCHESTRATOR] Agent Executed | Agent: %s", agent_name)
-
+    # 4. Primary worker thread executes fn_run
     try:
         result = fn_run(*args, **kwargs)
         with _ORCHESTRATOR_LOCK:
@@ -171,7 +167,8 @@ def _orchestrate_generic(
     finally:
         with _ORCHESTRATOR_LOCK:
             _IN_FLIGHT_EVENTS.pop(cache_key, None)
-            event.set()
+            if my_event is not None:
+                my_event.set()
 
 
 # ──────────────────────────────────────────────────────────

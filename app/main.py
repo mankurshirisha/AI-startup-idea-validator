@@ -840,10 +840,12 @@ def comparison_agent(request: ComparisonRequest):
     response_description="Structured conversational response from BetaBuddy",
 )
 def betabuddy_chat(request: BetaBuddyChatRequest):
+    dash_id = request.dashboardId or request.dashboard_id
     return process_chat_request(
         session_id=request.sessionId or "default_session",
         question=request.question,
         validation_result=request.validationResult,
+        dashboard_id=dash_id,
     )
 
 

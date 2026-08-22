@@ -2,7 +2,7 @@
 
 Features:
 - Singleton Client reusing connection pool.
-- Enforced 20s transport deadline.
+- Enforced 10s transport deadline.
 - Max 1 retry per model on 429 / 503 / Timeout (Max 2 attempts per model, Max 4 total HTTP requests).
 - Exponential backoff on rate limits.
 - Structured logging (Model, Attempt, Backoff, Fallback Used, 429 Count).
@@ -30,7 +30,7 @@ MAX_RETRIES_PER_MODEL = 1  # 1 initial + 1 retry = max 2 attempts per model
 
 
 def _get_client() -> genai.Client:
-    """Return singleton genai.Client with enforced 20s transport timeout."""
+    """Return singleton genai.Client with enforced 10s transport timeout."""
     global _CLIENT
     if _CLIENT is None:
         _CLIENT = genai.Client(
@@ -83,12 +83,11 @@ def _extract_json_like_text(text: str) -> str:
     return cleaned
 
 
-def generate_content(prompt: str, timeout: int = 30) -> str:
+def generate_content(prompt: str) -> str:
     """Call Gemini and return the cleaned text response with strict retry bounds.
 
     Args:
         prompt: The prompt to send to Gemini.
-        timeout: Maximum seconds to wait for a single Gemini API response.
 
     Returns:
         Cleaned response text.
