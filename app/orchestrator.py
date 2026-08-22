@@ -24,10 +24,12 @@ logger = get_logger("orchestrator")
 # ──────────────────────────────────────────────────────────
 # PER-AGENT THREAD-SAFE TTL CACHES (1-Hour TTL, 256 Maxsize)
 # ──────────────────────────────────────────────────────────
-_WEB_SEARCH_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
-_MARKET_OPP_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
+_WEB_SEARCH_CACHE: TTLCache = TTLCache(maxsize=256, ttl=300)  # 5‑minute TTL per plan
+_MARKET_OPP_CACHE: TTLCache = TTLCache(maxsize=256, ttl=300)
 _COMPETITOR_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
 _COMPARISON_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
+_SWOT_RISK_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
+_MVP_FEATURE_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
 
 _ORCHESTRATOR_LOCK = threading.Lock()
 
@@ -79,6 +81,98 @@ def _make_comparison_key(idea: str, country: str, competitor_names: List[str]) -
     })
 
 
+def _make_swot_risk_key(idea: str, country: str, industry: str) -> str:
+    return _hash_key({
+        "agent": "swot_risk",
+        "idea": idea.strip().lower(),
+        "country": country.strip().lower(),
+        "industry": industry.strip().lower(),
+    })
+
+
+def _make_mvp_feature_key(idea: str, country: str, industry: str) -> str:
+    return _hash_key({
+        "agent": "mvp_feature",
+        "idea": idea.strip().lower(),
+        "country": country.strip().lower(),
+        "industry": industry.strip().lower(),
+    })
+
+
+# In-flight request tracking to deduplicate concurrent requests for the exact same key
+_IN_FLIGHT_EVENTS: Dict[str, threading.Event] = {}
+
+
+def _orchestrate_generic(
+    cache: TTLCache,
+    cache_key: str,
+    agent_name: str,
+    fn_run: callable,
+    *args,
+    **kwargs,
+) -> dict:
+    """Generic orchestrator wrapper with TTL caching and singleflight in-flight deduplication."""
+    with _ORCHESTRATOR_LOCK:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info(
+                "[ORCHESTRATOR] Cache Hit | Agent: %s | Key: %s...", agent_name, cache_key[:12]
+            )
+            logger.info(
+                "[ORCHESTRATOR] Agent Skipped | Agent: %s | Reason: Reusing cached structured output", agent_name
+            )
+            return cached
+
+        if cache_key in _IN_FLIGHT_EVENTS:
+            event = _IN_FLIGHT_EVENTS[cache_key]
+            logger.info(
+                "[ORCHESTRATOR] In-Flight Execution Detected | Agent: %s | Key: %s... | Waiting for in-flight request to complete",
+                agent_name,
+                cache_key[:12],
+            )
+            # Release lock while waiting for the in-flight request
+            # so other threads can still access the orchestrator
+            pass
+
+    # Handle in-flight wait outside lock block to prevent deadlock
+    with _ORCHESTRATOR_LOCK:
+        event = _IN_FLIGHT_EVENTS.get(cache_key)
+
+    if event is not None and cache_key in _IN_FLIGHT_EVENTS:
+        event.wait(timeout=120)
+        with _ORCHESTRATOR_LOCK:
+            cached_after = cache.get(cache_key)
+        if cached_after is not None:
+            logger.info(
+                "[ORCHESTRATOR] Agent Skipped | Agent: %s | Reason: Returned result from completed in-flight request",
+                agent_name,
+            )
+            return cached_after
+
+    # Register as the primary executing thread for this cache key
+    event = threading.Event()
+    with _ORCHESTRATOR_LOCK:
+        # Double check cache
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        _IN_FLIGHT_EVENTS[cache_key] = event
+        logger.info(
+            "[ORCHESTRATOR] Cache Miss | Agent: %s | Key: %s...", agent_name, cache_key[:12]
+        )
+        logger.info("[ORCHESTRATOR] Agent Executed | Agent: %s", agent_name)
+
+    try:
+        result = fn_run(*args, **kwargs)
+        with _ORCHESTRATOR_LOCK:
+            cache[cache_key] = result
+        return result
+    finally:
+        with _ORCHESTRATOR_LOCK:
+            _IN_FLIGHT_EVENTS.pop(cache_key, None)
+            event.set()
+
+
 # ──────────────────────────────────────────────────────────
 # ORCHESTRATED AGENT EXECUTORS
 # ──────────────────────────────────────────────────────────
@@ -94,27 +188,13 @@ def orchestrate_web_search(
     business_model: str = "B2B",
     key_features: list = None,
 ) -> dict:
-    """Orchestrate Web Search Agent execution with per-agent caching."""
+    """Orchestrate Web Search Agent execution with per-agent caching and singleflight deduplication."""
     cache_key = _make_web_search_key(idea, target_country, industry)
-
-    with _ORCHESTRATOR_LOCK:
-        cached = _WEB_SEARCH_CACHE.get(cache_key)
-
-    if cached is not None:
-        logger.info(
-            "[ORCHESTRATOR] Cache Hit | Agent: WebSearch | Key: %s...", cache_key[:12]
-        )
-        logger.info(
-            "[ORCHESTRATOR] Agent Skipped | Agent: WebSearch | Reason: Reusing cached structured web search output"
-        )
-        return cached
-
-    logger.info(
-        "[ORCHESTRATOR] Cache Miss | Agent: WebSearch | Key: %s...", cache_key[:12]
-    )
-    logger.info("[ORCHESTRATOR] Agent Executed | Agent: WebSearch")
-
-    result = fn_run_agent(
+    return _orchestrate_generic(
+        _WEB_SEARCH_CACHE,
+        cache_key,
+        "WebSearch",
+        fn_run_agent,
         idea=idea,
         description=description,
         industry=industry,
@@ -125,17 +205,12 @@ def orchestrate_web_search(
         key_features=key_features,
     )
 
-    with _ORCHESTRATOR_LOCK:
-        _WEB_SEARCH_CACHE[cache_key] = result
-
-    return result
-
 
 def orchestrate_market_opportunity(
     fn_run_agent,
     market_request,
 ) -> dict:
-    """Orchestrate Market Opportunity Agent execution with caching."""
+    """Orchestrate Market Opportunity Agent execution with caching and singleflight deduplication."""
     cache_key = _make_market_opp_key(
         market_request.startupIdea,
         market_request.location,
@@ -143,30 +218,13 @@ def orchestrate_market_opportunity(
         market_request.marketAnalysis.marketSize or "",
         market_request.marketAnalysis.growthRate or "",
     )
-
-    with _ORCHESTRATOR_LOCK:
-        cached = _MARKET_OPP_CACHE.get(cache_key)
-
-    if cached is not None:
-        logger.info(
-            "[ORCHESTRATOR] Cache Hit | Agent: MarketOpportunity | Key: %s...", cache_key[:12]
-        )
-        logger.info(
-            "[ORCHESTRATOR] Agent Skipped | Agent: MarketOpportunity | Reason: Reusing cached market opportunity analysis"
-        )
-        return cached
-
-    logger.info(
-        "[ORCHESTRATOR] Cache Miss | Agent: MarketOpportunity | Key: %s...", cache_key[:12]
+    return _orchestrate_generic(
+        _MARKET_OPP_CACHE,
+        cache_key,
+        "MarketOpportunity",
+        fn_run_agent,
+        market_request,
     )
-    logger.info("[ORCHESTRATOR] Agent Executed | Agent: MarketOpportunity")
-
-    result = fn_run_agent(market_request)
-
-    with _ORCHESTRATOR_LOCK:
-        _MARKET_OPP_CACHE[cache_key] = result
-
-    return result
 
 
 def orchestrate_competitor_discovery(
@@ -174,37 +232,22 @@ def orchestrate_competitor_discovery(
     request,
     web_result: dict,
 ) -> dict:
-    """Orchestrate Competitor Discovery Agent execution with short-circuits & caching."""
+    """Orchestrate Competitor Discovery Agent execution with caching and singleflight deduplication."""
+    web_result = web_result if isinstance(web_result, dict) else {}
     seed_names = web_result.get("real_competitors", []) or []
     cache_key = _make_competitor_key(
         request.startupIdea,
         request.targetCountry or "Global",
         seed_names,
     )
-
-    with _ORCHESTRATOR_LOCK:
-        cached = _COMPETITOR_CACHE.get(cache_key)
-
-    if cached is not None:
-        logger.info(
-            "[ORCHESTRATOR] Cache Hit | Agent: CompetitorDiscovery | Key: %s...", cache_key[:12]
-        )
-        logger.info(
-            "[ORCHESTRATOR] Agent Skipped | Agent: CompetitorDiscovery | Reason: Reusing cached competitor discovery output"
-        )
-        return cached
-
-    logger.info(
-        "[ORCHESTRATOR] Cache Miss | Agent: CompetitorDiscovery | Key: %s...", cache_key[:12]
+    return _orchestrate_generic(
+        _COMPETITOR_CACHE,
+        cache_key,
+        "CompetitorDiscovery",
+        fn_run_agent,
+        request,
+        web_result,
     )
-    logger.info("[ORCHESTRATOR] Agent Executed | Agent: CompetitorDiscovery")
-
-    result = fn_run_agent(request, web_result)
-
-    with _ORCHESTRATOR_LOCK:
-        _COMPETITOR_CACHE[cache_key] = result
-
-    return result
 
 
 def orchestrate_comparison(
@@ -213,36 +256,80 @@ def orchestrate_comparison(
     web_result: dict,
     competitor_result: dict,
 ) -> dict:
-    """Orchestrate Comparison Agent execution with caching."""
+    """Orchestrate Comparison Agent execution with caching and singleflight deduplication."""
+    competitor_result = competitor_result if isinstance(competitor_result, dict) else {}
     competitors = competitor_result.get("competitors", []) or []
     comp_names = [c.get("name", "") for c in competitors if isinstance(c, dict) and c.get("name")]
+
 
     cache_key = _make_comparison_key(
         request.startupIdea,
         request.targetCountry or "Global",
         comp_names,
     )
-
-    with _ORCHESTRATOR_LOCK:
-        cached = _COMPARISON_CACHE.get(cache_key)
-
-    if cached is not None:
-        logger.info(
-            "[ORCHESTRATOR] Cache Hit | Agent: Comparison | Key: %s...", cache_key[:12]
-        )
-        logger.info(
-            "[ORCHESTRATOR] Agent Skipped | Agent: Comparison | Reason: Reusing cached comparison analysis"
-        )
-        return cached
-
-    logger.info(
-        "[ORCHESTRATOR] Cache Miss | Agent: Comparison | Key: %s...", cache_key[:12]
+    return _orchestrate_generic(
+        _COMPARISON_CACHE,
+        cache_key,
+        "Comparison",
+        fn_run_agent,
+        request,
+        web_result,
+        competitor_result,
     )
-    logger.info("[ORCHESTRATOR] Agent Executed | Agent: Comparison")
 
-    result = fn_run_agent(request, web_result, competitor_result)
 
-    with _ORCHESTRATOR_LOCK:
-        _COMPARISON_CACHE[cache_key] = result
+def orchestrate_swot_risk(
+    fn_run_agent,
+    request,
+    web_result: dict,
+    market_result: dict,
+    competitor_result: dict,
+) -> dict:
+    """Orchestrate SWOT & Risk Analysis Agent execution with caching and singleflight deduplication."""
+    web_result = web_result if isinstance(web_result, dict) else {}
+    industry = request.industry or web_result.get("industry", "")
+    cache_key = _make_swot_risk_key(
+        request.startupIdea,
+        request.targetCountry or "Global",
+        industry,
+    )
+    return _orchestrate_generic(
+        _SWOT_RISK_CACHE,
+        cache_key,
+        "SwotRisk",
+        fn_run_agent,
+        request,
+        web_result,
+        market_result,
+        competitor_result,
+    )
 
-    return result
+
+def orchestrate_mvp_feature(
+    fn_run_agent,
+    request,
+    web_result: dict,
+    market_result: dict,
+    competitor_result: dict,
+    swot_result: dict,
+) -> dict:
+    """Orchestrate MVP Feature Recommendation Agent execution with caching and singleflight deduplication."""
+    web_result = web_result if isinstance(web_result, dict) else {}
+    industry = request.industry or web_result.get("industry", "")
+    cache_key = _make_mvp_feature_key(
+        request.startupIdea,
+        request.targetCountry or "Global",
+        industry,
+    )
+    return _orchestrate_generic(
+        _MVP_FEATURE_CACHE,
+        cache_key,
+        "MVPFeature",
+        fn_run_agent,
+        request,
+        web_result,
+        market_result,
+        competitor_result,
+        swot_result,
+    )
+

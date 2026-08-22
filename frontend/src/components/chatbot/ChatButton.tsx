@@ -26,7 +26,15 @@ export const ChatButton: React.FC<ChatButtonProps> = React.memo(({ isOpen, onCli
       animate={{ scale: 1, opacity: 1 }}
       whileHover={{ scale: 1.08 }}
       whileTap={{ scale: 0.94 }}
-      className="fixed bottom-6 right-6 z-[9999] w-[60px] h-[60px] rounded-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-[0_10px_30px_-10px_rgba(15,23,42,0.25)] hover:shadow-[0_0_25px_rgba(59,59,219,0.35),0_15px_35px_-10px_rgba(15,23,42,0.3)] flex items-center justify-center cursor-pointer transition-all duration-300 ring-4 ring-indigo-500/10 focus:ring-indigo-500/30 focus:outline-none overflow-hidden group select-none"
+      style={{
+        position: 'fixed',
+        right: '24px',
+        bottom: '24px',
+        width: '60px',
+        height: '60px',
+        zIndex: 9998,
+      }}
+      className="rounded-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-[0_10px_30px_-10px_rgba(15,23,42,0.25)] hover:shadow-[0_0_25px_rgba(59,59,219,0.35),0_15px_35px_-10px_rgba(15,23,42,0.3)] flex items-center justify-center cursor-pointer transition-all duration-300 ring-4 ring-indigo-500/10 focus:ring-indigo-500/30 focus:outline-none overflow-hidden group select-none"
     >
       <AnimatePresence mode="wait">
         {isOpen ? (

@@ -39,20 +39,13 @@ class ChatResult:
 
 
 def _build_graceful_fallback(intent: str, val_result: dict) -> str:
-    """Build a deterministic fallback response using dashboard context when Gemini is unavailable."""
+    """Build a deterministic advisor fallback response using dashboard context when Gemini is unavailable."""
     summary = val_result.get("executiveSummary") or "Your startup validation dashboard has been analyzed."
     score = val_result.get("validationScore") or 75
     verdict = val_result.get("verdict") or "Promising"
 
-    return f"""### Answer
-I'm having trouble generating a detailed response right now. Based on your dashboard, here's what I found:
+    return f"Dashboard status: Validation score is {score}/100 ({verdict}). Summary: {summary}"
 
-### Dashboard Findings
-- **Validation Score**: {score}/100 ({verdict})
-- **Summary**: {summary}
-
-### Recommendations
-Review your dashboard metrics above for detailed strategic guidance while AI services are reconnecting."""
 
 
 class ChatService:

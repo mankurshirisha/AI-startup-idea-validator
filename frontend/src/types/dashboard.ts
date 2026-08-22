@@ -101,6 +101,23 @@ export interface FinalVerdictData {
   rationale: string
 }
 
+export interface MVPFeature {
+  feature: string
+  priority: 'High' | 'Medium' | 'Low'
+  marketFit?: 'High' | 'Medium' | 'Low' | string
+  customerValue?: 'High' | 'Medium' | 'Low' | string
+  resourceEffort?: 'Low' | 'Medium' | 'High' | string
+  reason: string
+  mvpPhase?: 'Initial MVP' | 'Post-MVP' | string
+}
+
+export interface MVPRecommendationData {
+  summary: string
+  overallStrategy: string
+  features: MVPFeature[]
+  deferredFeatures: string[]
+}
+
 export interface ValidationResult {
   idea: string
   description?: string
@@ -117,6 +134,9 @@ export interface ValidationResult {
   // Enriched BI Platform fields
   scoreBreakdown?: ScoreDimension[]
   swot?: SWOTData
+  swotRecommendations?: string[]
+  overallRiskLevel?: string
+  mvp?: MVPRecommendationData
   insights?: MarketInsightsData
   categorizedRecommendations?: CategorizedRecommendation[]
   investorPerspective?: InvestorPerspectiveData

@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from tavily import TavilyClient
 
-from app.gemini_client import generate_content
+from app.gemini_client import generate_content, _extract_json_like_text
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -333,20 +333,98 @@ Return ONLY valid JSON (no markdown/fences) matching this exact schema:
 }}
 """
 
+def _build_unavailable_competitor_result(
+    startup_idea: str,
+    industry: str,
+    location: str,
+    seed_competitor_names: list = None,
+    processed_results: list = None,
+) -> dict:
+    """Return a clean structured fallback result when Gemini is temporarily unavailable."""
+    competitors = []
+    if seed_competitor_names and isinstance(seed_competitor_names, list):
+        for name in seed_competitor_names[:5]:
+            if name and isinstance(name, str) and name.strip():
+                competitors.append({
+                    "name": name.strip(),
+                    "website": None,
+                    "description": f"Pre-identified competitor operating in {industry}.",
+                    "key_features": ["Industry Competitor"],
+                    "target_customers": "Target Users",
+                    "pricing": "N/A",
+                    "source": None,
+                })
+
+    if not competitors and processed_results and isinstance(processed_results, list):
+        for res in processed_results[:3]:
+            url = res.get("url", "")
+            if url and "google" not in url:
+                competitors.append({
+                    "name": url.split("//")[-1].split("/")[0].replace("www.", "").capitalize(),
+                    "website": url,
+                    "description": (res.get("content") or f"Competitor in {industry}")[:150],
+                    "key_features": ["Market Competitor"],
+                    "target_customers": "Target Users",
+                    "pricing": "N/A",
+                    "source": url,
+                })
+
+    return {
+        "status": "temporarily_unavailable",
+        "startupIdea": startup_idea,
+        "industry": industry,
+        "location": location,
+        "competitors": competitors,
+        "message": "Competitor analysis is temporarily unavailable. Other validation results are still available.",
+    }
+
+
     try:
         logger.info("Starting Gemini competitor analysis request")
         raw_choice = generate_content(prompt)
-        structured_output = json.loads(raw_choice)
+
+        # Check for empty, whitespace, or generic error responses
+        if not raw_choice or not raw_choice.strip() or "high demand" in raw_choice.lower():
+            logger.error("Competitor discovery received empty or fallback AI response")
+            return _build_unavailable_competitor_result(
+                startup_idea, industry, location, seed_competitor_names, processed_results
+            )
+
+        cleaned_text = _extract_json_like_text(raw_choice)
+        if not cleaned_text or len(cleaned_text.strip()) == 0:
+            logger.error("Competitor discovery could not extract JSON from raw response snippet")
+            return _build_unavailable_competitor_result(
+                startup_idea, industry, location, seed_competitor_names, processed_results
+            )
+
+        try:
+            structured_output = json.loads(cleaned_text)
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.error(
+                "Competitor discovery JSON parse error: %s | Raw response snippet: %s",
+                exc,
+                raw_choice[:200],
+            )
+            return _build_unavailable_competitor_result(
+                startup_idea, industry, location, seed_competitor_names, processed_results
+            )
+
+        if not isinstance(structured_output, dict) or "competitors" not in structured_output:
+            logger.error("Competitor discovery returned invalid JSON shape (expected dict with 'competitors')")
+            return _build_unavailable_competitor_result(
+                startup_idea, industry, location, seed_competitor_names, processed_results
+            )
+
         structured_output = _populate_competitor_websites(structured_output, processed_results)
         logger.info("Competitor discovery completed successfully")
         return structured_output
 
-    except Exception:
-        logger.exception("Gemini competitor analysis failed")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to generate competitor analysis from the AI service.",
-        ) from None
+    except Exception as exc:
+        logger.exception("Gemini competitor analysis failed: %s", exc)
+        return _build_unavailable_competitor_result(
+            startup_idea, industry, location, seed_competitor_names, processed_results
+        )
+
 
 
 @app.get("/")

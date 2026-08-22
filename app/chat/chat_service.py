@@ -53,7 +53,14 @@ def process_chat_request(
     intent, confidence = classify_intent(question)
     logger.info("Intent classified: '%s' (confidence: %.2f)", intent, confidence)
 
-    # 3. Knowledge Base Construction (In-Memory, Session Isolated)
+    # 3. Knowledge Base Construction (In-Memory, Session Isolated & Dashboard Reuse)
+    if not validation_result:
+        from app.chatbot.service import BetaBuddyService
+        _service = BetaBuddyService()
+        validation_result = _service.get_dashboard(session_id) or {}
+        if validation_result:
+            logger.info("Reused stored dashboard result for session '%s'", session_id)
+
     kb = build_knowledge_base(validation_result or {})
 
     # 4. Context Retrieval (Minimal Required Context Only)
@@ -68,10 +75,13 @@ def process_chat_request(
     # 7. Gemini LLM Call (MAX 1 CALL, ZERO Tavily)
     raw_response = ""
     try:
+        logger.info("DIAGNOSTICS | Chat Gemini Request Started | Intent: %s | Prompt Length: %d", intent, len(prompt))
         raw_response = generate_content(prompt)
+        logger.info("DIAGNOSTICS | Chat Gemini Request Completed | Intent: %s | Raw Length: %d", intent, len(raw_response))
     except Exception as exc:
-        logger.exception("Gemini call failed in chat service")
+        logger.exception("DIAGNOSTICS | Gemini call failed in chat service | Exception: %s | Error: %s", type(exc).__name__, exc)
         raw_response = "I couldn't find that information in your startup validation dashboard."
+
 
     # 8. Response Formatter
     formatted_answer = format_response(raw_response, intent)

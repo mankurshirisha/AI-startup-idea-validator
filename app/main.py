@@ -16,6 +16,7 @@ import asyncio
 import concurrent.futures
 import hashlib
 import json
+import requests
 import threading
 import time
 from typing import Optional, Dict, Any
@@ -37,6 +38,8 @@ from app.orchestrator import (
     orchestrate_market_opportunity,
     orchestrate_competitor_discovery,
     orchestrate_comparison,
+    orchestrate_swot_risk,
+    orchestrate_mvp_feature,
 )
 from app.semantic_cache import semantic_cache
 
@@ -191,6 +194,113 @@ def _run_comparison_job(request: StartupRequest, web_result: dict, competitor_re
     )
 
 
+def _run_swot_job(
+    request: StartupRequest,
+    web_result: dict,
+    market_result: dict,
+    competitor_result: dict,
+) -> dict:
+    """Isolated SWOT & Risk Analysis job that calls the standalone agent endpoint on port 8903."""
+    swot_endpoint = "http://127.0.0.1:8903/api/swot-risk-agent"
+    web_res = web_result if isinstance(web_result, dict) else {}
+    comp_res = competitor_result if isinstance(competitor_result, dict) else {}
+    payload = {
+        "startupIdea": request.startupIdea,
+        "description": request.description or "",
+        "industry": request.industry or web_res.get("industry", "General Tech"),
+        "targetCustomer": request.targetCustomer or "General Consumers",
+        "targetCountry": request.targetCountry or "Global",
+        "startupStage": request.startupStage or "Idea",
+        "businessModel": request.businessModel or "B2C",
+        "keyFeatures": request.keyFeatures or [],
+        "marketData": market_result or {},
+        "competitors": comp_res.get("competitors", []),
+    }
+    try:
+        resp = requests.post(swot_endpoint, json=payload, timeout=25)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.exception("Failed calling SWOT Risk Agent at %s: %s", swot_endpoint, exc)
+        return {
+            "status": "error",
+            "detail": str(exc),
+            "swot_analysis": {
+                "strengths": ["Clear startup idea"],
+                "weaknesses": ["Market validation required"],
+                "opportunities": ["Conduct pilot testing"],
+                "threats": ["Existing competition"],
+            },
+            "risk_analysis": {},
+            "overall_risk_level": "Medium",
+            "recommendations": [],
+        }
+
+
+def _run_mvp_job(
+    request: StartupRequest,
+    web_result: dict,
+    market_result: dict,
+    competitor_result: dict,
+    swot_result: dict,
+) -> dict:
+    """Isolated MVP Feature Recommendation job that calls the standalone agent endpoint on port 8904."""
+    mvp_endpoint = "http://127.0.0.1:8904/api/mvp-feature-agent"
+    web_res = web_result if isinstance(web_result, dict) else {}
+    mkt_res = market_result if isinstance(market_result, dict) else {}
+    comp_res = competitor_result if isinstance(competitor_result, dict) else {}
+    swot_res = swot_result if isinstance(swot_result, dict) else {}
+
+    target_cust = [request.targetCustomer] if request.targetCustomer else ["General Users"]
+    recs = (swot_res.get("recommendations", []) if isinstance(swot_res, dict) else []) or (mkt_res.get("recommendations", []) if isinstance(mkt_res, dict) else [])
+
+    payload = {
+        "startupIdea": request.startupIdea,
+        "description": request.description or "",
+        "industry": request.industry or web_res.get("industry", "Technology"),
+        "location": request.targetCountry or "Global",
+        "startupStage": request.startupStage or "Idea",
+        "businessModel": request.businessModel or "B2B",
+        "targetCustomer": target_cust,
+        "keyFeatures": request.keyFeatures or [],
+        "marketOpportunity": mkt_res.get("marketOpportunity", {}),
+        "marketOpportunityScore": mkt_res.get("marketOpportunityScore", 0),
+        "customerInsights": mkt_res.get("customerInsights", {}),
+        "recommendations": recs,
+        "competitors": comp_res.get("competitors", []),
+    }
+    try:
+        resp = requests.post(mvp_endpoint, json=payload, timeout=25)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.exception("Failed calling MVP Feature Agent at %s: %s", mvp_endpoint, exc)
+        return {
+            "status": "error",
+            "detail": str(exc),
+            "startupIdea": request.startupIdea,
+            "industry": request.industry or "Technology",
+            "location": request.targetCountry or "Global",
+            "mvpRecommendation": {
+                "summary": "Focus MVP on core high-value features.",
+                "overallStrategy": "Validate product-market fit with low initial complexity.",
+            },
+            "features": [
+                {
+                    "feature": f if isinstance(f, str) else "Core Feature",
+                    "priority": "High",
+                    "marketFit": "Medium",
+                    "customerValue": "High",
+                    "resourceEffort": "Medium",
+                    "reason": "Essential for core workflow validation.",
+                    "mvpPhase": "Initial MVP",
+                }
+                for f in (request.keyFeatures or ["Core Functionality"])[:3]
+            ],
+            "deferredFeatures": (request.keyFeatures or [])[3:],
+        }
+
+
 @app.get(
     "/",
     summary="Health check",
@@ -270,8 +380,10 @@ def validate(request: StartupRequest):
     market_result = None
     competitor_result = None
     comparison_result = None
+    swot_result = None
+    mvp_result = None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         f_market = executor.submit(
             orchestrate_market_opportunity, run_market_opportunity_agent, market_request
         )
@@ -305,13 +417,41 @@ def validate(request: StartupRequest):
                 )
                 logger.info("PIPELINE PROFILE | Comparison Agent started (overlapping Market)")
 
-        # Collect comparison result (market_result already collected above)
+        # Submit SWOT Risk Agent as soon as Market & Competitor results are available
+        f_swot = executor.submit(
+            orchestrate_swot_risk,
+            _run_swot_job,
+            request,
+            web_result,
+            market_result,
+            competitor_result,
+        )
+        logger.info("PIPELINE PROFILE | SWOT Risk Agent started")
+
+        # Submit MVP Feature Recommendation Agent concurrently; it will wait for SWOT result internally
+        def _run_mvp_with_swot():
+            # Wait for SWOT result
+            swot_res = f_swot.result()
+            return orchestrate_mvp_feature(
+                _run_mvp_job,
+                request,
+                web_result,
+                market_result,
+                competitor_result,
+                swot_res,
+            )
+        f_mvp = executor.submit(_run_mvp_with_swot)
+        logger.info("PIPELINE PROFILE | MVP Feature Agent started (concurrently with SWOT)")
+
+        # Collect comparison result
         if comparison_future is not None:
             comparison_result = comparison_future.result()
         logger.info(
             "PIPELINE PROFILE | Comparison Agent done | Elapsed: %.3fs",
             time.perf_counter() - t_parallel_start,
         )
+
+
 
     logger.info(
         "PIPELINE PROFILE | Full Validation Pipeline Total | Elapsed: %.3fs",
@@ -322,11 +462,14 @@ def validate(request: StartupRequest):
     result = {
         "status": "success",
         "dashboard_id": dashboard_id,
-        "web_search": web_result,
-        "market_opportunity": market_result,
-        "competitor_analysis": competitor_result,
-        "comparison": comparison_result,
+        "web_search": web_result or {},
+        "market_opportunity": market_result or {},
+        "competitor_analysis": competitor_result or {},
+        "comparison": comparison_result or {},
+        "swot_analysis": swot_result or {},
+        "mvp_recommendation": mvp_result or {},
     }
+
 
     # ── Store in request-level cache, semantic cache & BetaBuddy dashboard store ──
     with _REQUEST_CACHE_LOCK:
@@ -409,18 +552,14 @@ def validate_stream(request: StartupRequest):
             market_request = _build_market_opportunity_request(request, web_result)
 
             # ──────────────────────────────────────────────────
-            # STAGE 2 & 3 — PARALLEL + STAGE 3→4 OVERLAP
+            # STAGE 2 & 3 — PARALLEL EXECUTION
             # ──────────────────────────────────────────────────
             yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'running'})}\n\n"
             yield f"data: {json.dumps({'stage': 'competitor', 'status': 'running'})}\n\n"
 
             t_parallel_start = time.perf_counter()
 
-            market_result = None
-            competitor_result = None
-            comparison_result = None
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 f_market = executor.submit(
                     orchestrate_market_opportunity, run_market_opportunity_agent, market_request
                 )
@@ -428,55 +567,86 @@ def validate_stream(request: StartupRequest):
                     orchestrate_competitor_discovery, _run_competitor_job, request, web_result
                 )
 
-                comparison_future = None
+                market_result = await loop.run_in_executor(None, f_market.result)
+                logger.info(
+                    "PIPELINE PROFILE | Market Opportunity Agent done | Elapsed: %.3fs",
+                    time.perf_counter() - t_parallel_start,
+                )
+                yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
 
-                # Poll completed futures; yield SSE events as each finishes.
-                pending = {f_market, f_competitor}
-                while pending:
-                    done, pending = await loop.run_in_executor(
-                        None,
-                        lambda p=pending: concurrent.futures.wait(
-                            p, return_when=concurrent.futures.FIRST_COMPLETED
-                        ),
-                    )
-                    for future in done:
-                        if future is f_market:
-                            market_result = future.result()
-                            logger.info(
-                                "PIPELINE PROFILE | Market Opportunity Agent done | Elapsed: %.3fs",
-                                time.perf_counter() - t_parallel_start,
-                            )
-                            yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
+                competitor_result = await loop.run_in_executor(None, f_competitor.result)
+                logger.info(
+                    "PIPELINE PROFILE | Competitor Discovery Agent done | Elapsed: %.3fs",
+                    time.perf_counter() - t_parallel_start,
+                )
+                yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
 
-                        elif future is f_competitor:
-                            competitor_result = future.result()
-                            logger.info(
-                                "PIPELINE PROFILE | Competitor Discovery Agent done | Elapsed: %.3fs",
-                                time.perf_counter() - t_parallel_start,
-                            )
-                            yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
-                            yield f"data: {json.dumps({'stage': 'comparison', 'status': 'running'})}\n\n"
+                # ──────────────────────────────────────────────────
+                # STAGE 4 — Comparison
+                # ──────────────────────────────────────────────────
+                yield f"data: {json.dumps({'stage': 'comparison', 'status': 'running'})}\n\n"
+                comparison_future = executor.submit(
+                    orchestrate_comparison,
+                    _run_comparison_job,
+                    request,
+                    web_result,
+                    competitor_result,
+                )
+                logger.info("PIPELINE PROFILE | Comparison Agent started")
+                comparison_result = await loop.run_in_executor(
+                    None, comparison_future.result
+                )
+                logger.info(
+                    "PIPELINE PROFILE | Comparison Agent done | Elapsed: %.3fs",
+                    time.perf_counter() - t_parallel_start,
+                )
+                yield f"data: {json.dumps({'stage': 'comparison', 'status': 'done'})}\n\n"
 
-                            # ── Stage 3→4 OVERLAP: start comparison immediately ──
-                            comparison_future = executor.submit(
-                                orchestrate_comparison,
-                                _run_comparison_job,
-                                request,
-                                web_result,
-                                competitor_result,
-                            )
-                            logger.info(
-                                "PIPELINE PROFILE | Comparison Agent started (overlapping Market)"
-                            )
-                            pending.add(comparison_future)
+                # ──────────────────────────────────────────────────
+                # STAGE 5 — SWOT & Risk Analysis
+                # ──────────────────────────────────────────────────
+                yield f"data: {json.dumps({'stage': 'swot_risk', 'status': 'running'})}\n\n"
+                swot_future = executor.submit(
+                    orchestrate_swot_risk,
+                    _run_swot_job,
+                    request,
+                    web_result,
+                    market_result,
+                    competitor_result,
+                )
+                logger.info("PIPELINE PROFILE | SWOT Risk Agent started")
+                swot_result = await loop.run_in_executor(
+                    None, swot_future.result
+                )
+                logger.info(
+                    "PIPELINE PROFILE | SWOT Risk Agent done | Elapsed: %.3fs",
+                    time.perf_counter() - t_parallel_start,
+                )
+                yield f"data: {json.dumps({'stage': 'swot_risk', 'status': 'done'})}\n\n"
 
-                        elif comparison_future is not None and future is comparison_future:
-                            comparison_result = future.result()
-                            logger.info(
-                                "PIPELINE PROFILE | Comparison Agent done | Elapsed: %.3fs",
-                                time.perf_counter() - t_parallel_start,
-                            )
-                            yield f"data: {json.dumps({'stage': 'comparison', 'status': 'done'})}\n\n"
+                # ──────────────────────────────────────────────────
+                # STAGE 6 — MVP Feature Recommendation
+                # ──────────────────────────────────────────────────
+                yield f"data: {json.dumps({'stage': 'mvp_feature', 'status': 'running'})}\n\n"
+                mvp_future = executor.submit(
+                    orchestrate_mvp_feature,
+                    _run_mvp_job,
+                    request,
+                    web_result,
+                    market_result,
+                    competitor_result,
+                    swot_result,
+                )
+                logger.info("PIPELINE PROFILE | MVP Feature Agent started")
+                mvp_result = await loop.run_in_executor(
+                    None, mvp_future.result
+                )
+                logger.info(
+                    "PIPELINE PROFILE | MVP Feature Agent done | Elapsed: %.3fs",
+                    time.perf_counter() - t_parallel_start,
+                )
+                yield f"data: {json.dumps({'stage': 'mvp_feature', 'status': 'done'})}\n\n"
+
 
             logger.info(
                 "PIPELINE PROFILE | Full Validation Stream Pipeline Total | Elapsed: %.3fs",
@@ -489,6 +659,8 @@ def validate_stream(request: StartupRequest):
                 "market_opportunity": market_result,
                 "competitor_analysis": competitor_result,
                 "comparison": comparison_result,
+                "swot_analysis": swot_result,
+                "mvp_recommendation": mvp_result,
             }
 
             # ── Store in request-level cache & semantic cache ───────────────────

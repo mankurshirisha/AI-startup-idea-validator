@@ -13,6 +13,8 @@ import type {
   Competitor,
   MarketData,
   CategorizedRecommendation,
+  MVPFeature,
+  MVPRecommendationData,
 } from '@/types/dashboard'
 
 
@@ -25,6 +27,47 @@ export interface StartupValidationPayload {
   startupStage?: string
   businessModel?: string
   keyFeatures?: string[]
+}
+
+export interface SwotAgentResponse {
+  status?: string
+  swot_analysis?: {
+    strengths?: string[]
+    weaknesses?: string[]
+    opportunities?: string[]
+    threats?: string[]
+  }
+  risk_analysis?: {
+    market_risk?: { level?: string; risks?: string[] }
+    competition_risk?: { level?: string; risks?: string[] }
+    technical_risk?: { level?: string; risks?: string[] }
+    financial_risk?: { level?: string; risks?: string[] }
+    execution_risk?: { level?: string; risks?: string[] }
+    regulatory_risk?: { level?: string; risks?: string[] }
+  }
+  overall_risk_level?: string
+  recommendations?: string[]
+}
+
+export interface MVPBackendResponse {
+  status?: string
+  startupIdea?: string
+  industry?: string
+  location?: string
+  mvpRecommendation?: {
+    summary?: string
+    overallStrategy?: string
+  }
+  features?: Array<{
+    feature?: string
+    priority?: string
+    marketFit?: string
+    customerValue?: string
+    resourceEffort?: string
+    reason?: string
+    mvpPhase?: string
+  }>
+  deferredFeatures?: string[]
 }
 
 export interface BackendValidationResponse {
@@ -108,6 +151,8 @@ export interface BackendValidationResponse {
       business_viability?: string
     }
   }
+  swot_analysis?: SwotAgentResponse
+  mvp_recommendation?: MVPBackendResponse
 }
 
 /**
@@ -362,29 +407,51 @@ export function mapBackendToValidationResult(
     },
   ]
 
-  // 11. Enriched SWOT Analysis
+  // 11. Enriched SWOT Analysis (from standalone SWOT Risk Analysis Agent)
+  const swotRaw = data.swot_analysis ?? {}
+  const swotFromAgent = swotRaw.swot_analysis ?? {}
+
+  const swotStrengths = (swotFromAgent.strengths && swotFromAgent.strengths.length > 0)
+    ? swotFromAgent.strengths
+    : strengths
+
+  const swotWeaknesses = (swotFromAgent.weaknesses && swotFromAgent.weaknesses.length > 0)
+    ? swotFromAgent.weaknesses
+    : weaknesses
+
+  const swotOpportunities = (swotFromAgent.opportunities && swotFromAgent.opportunities.length > 0)
+    ? swotFromAgent.opportunities
+    : opps
+
+  const swotThreats = (swotFromAgent.threats && swotFromAgent.threats.length > 0)
+    ? swotFromAgent.threats
+    : []
+
   const swot = {
-    strengths: strengths.length > 0 ? strengths : [
+    strengths: swotStrengths.length > 0 ? swotStrengths : [
       `Dedicated specialization in ${industry} tailored specifically for ${market.industry || 'target users'}`,
       'AI-driven automation reduces user task duration by up to 70%',
       'High software gross margins (80%+) with scalable cloud architecture',
     ],
-    weaknesses: weaknesses.length > 0 ? weaknesses : [
+    weaknesses: swotWeaknesses.length > 0 ? swotWeaknesses : [
       'Early brand awareness gap compared to established market incumbents',
       'Initial dependence on external AI API models and infrastructure latency',
       'Customer acquisition cost requires early optimization during launch phase',
     ],
-    opportunities: opps.length > 0 ? opps : [
+    opportunities: swotOpportunities.length > 0 ? swotOpportunities : [
       'Expanding into adjacent international markets and enterprise accounts',
       'Developing proprietary fine-tuned AI datasets to build an unassailable MOAT',
       'Strategic integration partnerships with complementary software tools',
     ],
-    threats: [
+    threats: swotThreats.length > 0 ? swotThreats : [
       'Rapid AI model evolution causing potential feature commoditization',
       'Established incumbents adding native AI features into existing suites',
       'Evolving regional regulatory standards around data privacy and AI usage',
     ],
   }
+
+  const swotRecommendations = swotRaw.recommendations ?? []
+  const overallRiskLevel = swotRaw.overall_risk_level ?? 'Medium'
 
   // 12. Enriched Market Insights
   const insights = {
@@ -507,34 +574,62 @@ export function mapBackendToValidationResult(
     ],
   }
 
-  // 15. Risk Analysis (5 Categories)
-  const riskAnalysis: ValidationResult['riskAnalysis'] = [
-    {
-      type: 'Market Risk',
-      level: competitors.length > 3 ? 'Medium' : 'Low',
-      explanation: `Market demand is verified, though competitive crowding in ${industry} requires sharp messaging.`,
-    },
-    {
-      type: 'Technical Risk',
-      level: 'Low',
-      explanation: 'Built on established cloud infrastructure and proven LLM API capabilities.',
-    },
-    {
-      type: 'Execution Risk',
-      level: 'Medium',
-      explanation: 'Requires disciplined GTM execution and continuous customer feedback iteration.',
-    },
-    {
-      type: 'Financial Risk',
-      level: score >= 70 ? 'Low' : 'Medium',
-      explanation: 'Requires careful management of API token costs relative to pricing subscription tiers.',
-    },
-    {
-      type: 'Regulatory Risk',
-      level: 'Low',
-      explanation: 'Standard data privacy and SOC-2 compliance required for cloud operations.',
-    },
-  ]
+  // 15. Risk Analysis (Mapped from standalone SWOT Risk Agent if available)
+  let riskAnalysis: ValidationResult['riskAnalysis'] = []
+  if (swotRaw.risk_analysis && Object.keys(swotRaw.risk_analysis).length > 0) {
+    const ra = swotRaw.risk_analysis
+    const categoryMap: Array<{ key: keyof typeof ra; type: 'Market Risk' | 'Technical Risk' | 'Execution Risk' | 'Financial Risk' | 'Regulatory Risk' }> = [
+      { key: 'market_risk', type: 'Market Risk' },
+      { key: 'technical_risk', type: 'Technical Risk' },
+      { key: 'execution_risk', type: 'Execution Risk' },
+      { key: 'financial_risk', type: 'Financial Risk' },
+      { key: 'regulatory_risk', type: 'Regulatory Risk' },
+    ]
+    const items: NonNullable<ValidationResult['riskAnalysis']> = []
+    for (const mapping of categoryMap) {
+      const item = ra[mapping.key]
+      if (item && item.risks && item.risks.length > 0) {
+        items.push({
+          type: mapping.type,
+          level: (item.level as any) || 'Medium',
+          explanation: item.risks.join(' '),
+        })
+      }
+    }
+    if (items.length > 0) {
+      riskAnalysis = items
+    }
+  }
+
+  if (!riskAnalysis || riskAnalysis.length === 0) {
+    riskAnalysis = [
+      {
+        type: 'Market Risk',
+        level: competitors.length > 3 ? 'Medium' : 'Low',
+        explanation: `Market demand is verified, though competitive crowding in ${industry} requires sharp messaging.`,
+      },
+      {
+        type: 'Technical Risk',
+        level: 'Low',
+        explanation: 'Built on established cloud infrastructure and proven LLM API capabilities.',
+      },
+      {
+        type: 'Execution Risk',
+        level: 'Medium',
+        explanation: 'Requires disciplined GTM execution and continuous customer feedback iteration.',
+      },
+      {
+        type: 'Financial Risk',
+        level: score >= 70 ? 'Low' : 'Medium',
+        explanation: 'Requires careful management of API token costs relative to pricing subscription tiers.',
+      },
+      {
+        type: 'Regulatory Risk',
+        level: 'Low',
+        explanation: 'Standard data privacy and SOC-2 compliance required for cloud operations.',
+      },
+    ]
+  }
 
   // 16. Final Verdict Rationale
   let finalDecision: NonNullable<ValidationResult['finalVerdict']>['decision'] = 'Proceed with Improvements'
@@ -549,6 +644,29 @@ export function mapBackendToValidationResult(
       `Based on multi-agent validation, "${idea}" shows a validation score of ${score}/100. ` +
       `The market opportunity in ${industry} is substantial (${marketSize}), and user demand signals are strong. ` +
       `We recommend executing the prioritized roadmap—focusing first on MVP waitlist validation, product onboarding speed, and clear feature positioning.`,
+  }
+
+  // 17. MVP Feature Recommendation (Mapped from standalone MVP Agent)
+  const mvpRaw = data.mvp_recommendation ?? {}
+  const mvpRecObj = mvpRaw.mvpRecommendation ?? {}
+  const rawFeatures = mvpRaw.features ?? []
+  const rawDeferred = mvpRaw.deferredFeatures ?? []
+
+  const mappedFeatures: MVPFeature[] = rawFeatures.map((f) => ({
+    feature: f.feature?.trim() || 'Core Feature',
+    priority: (f.priority as any) || 'High',
+    marketFit: f.marketFit || 'High',
+    customerValue: f.customerValue || 'High',
+    resourceEffort: f.resourceEffort || 'Medium',
+    reason: f.reason?.trim() || 'Essential feature for validating core startup value proposition.',
+    mvpPhase: f.mvpPhase || 'Initial MVP',
+  }))
+
+  const mvp: MVPRecommendationData = {
+    summary: mvpRecObj.summary || 'Focus the initial MVP on high-value core features that address immediate customer pain points.',
+    overallStrategy: mvpRecObj.overallStrategy || 'Prioritize initial features with strong market fit while deferring secondary capabilities to post-MVP iterations.',
+    features: mappedFeatures,
+    deferredFeatures: rawDeferred,
   }
 
   return {
@@ -566,6 +684,9 @@ export function mapBackendToValidationResult(
     sources,
     scoreBreakdown,
     swot,
+    swotRecommendations,
+    overallRiskLevel,
+    mvp,
     insights,
     categorizedRecommendations,
     investorPerspective,

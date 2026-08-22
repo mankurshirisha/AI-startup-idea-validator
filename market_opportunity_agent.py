@@ -4,7 +4,7 @@ from typing import List
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.gemini_client import generate_content
+from app.gemini_client import generate_content, _extract_json_like_text
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -14,6 +14,19 @@ app = FastAPI(title="Market Opportunity Agent", version="1.0")
 # -----------------------------
 # Input Models
 # -----------------------------
+
+
+def _parse_market_opp_raw(raw: str) -> dict:
+    if not raw or not raw.strip() or "high demand" in raw.lower():
+        return {}
+    cleaned = _extract_json_like_text(raw)
+    if not cleaned:
+        return {}
+    try:
+        data = json.loads(cleaned)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 class MarketAnalysis(BaseModel):
@@ -137,7 +150,8 @@ def run_market_opportunity_agent(request: MarketOpportunityRequest) -> dict:
 
     try:
         raw = generate_content(prompt)
-        parsed = json.loads(raw)
+        parsed = _parse_market_opp_raw(raw)
+
 
         if isinstance(parsed.get("marketOpportunityScore"), (int, float)):
             score = int(max(0, min(100, round(float(parsed["marketOpportunityScore"])))))

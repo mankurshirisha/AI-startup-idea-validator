@@ -1,59 +1,86 @@
 import React from 'react'
 import { motion } from 'framer-motion'
-import { X, Sparkles } from 'lucide-react'
+import { X, History } from 'lucide-react'
 
 import replyReadyImg from '@/assets/betabuddy/reply_ready.png'
 
 interface ChatHeaderProps {
   onClose: () => void
+  onToggleSidebar?: () => void
+  isSidebarOpen?: boolean
 }
 
 /**
- * ChatHeader Component (UI v2)
- * Features frosted glass backdrop (`bg-slate-900/90 backdrop-blur-md`),
- * reply_ready.png mascot avatar with hover rotate effect, title, subtitle, and online status.
+ * ChatHeader Component
+ * Clean, white header with ~82px height:
+ * - 48x48 circular avatar with white background and soft shadow
+ * - "BetaBuddy" (18px bold #111827) + Green status dot (8x8 #22C55E) + "Online" (14px font-500 #22C55E)
+ * - Subtitle: "Startup Validation Assistant" (14px font-400 #6B7280)
+ * - Sidebar History toggle button & Close X button
  */
-export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({ onClose }) => {
+export const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({ onClose, onToggleSidebar, isSidebarOpen }) => {
   return (
-    <div className="flex items-center justify-between px-4.5 py-3.5 bg-slate-900/90 backdrop-blur-md text-white border-b border-slate-800/80 select-none flex-shrink-0 z-10">
-      <div className="flex items-center gap-3">
-        {/* Avatar Container with reply_ready.png & hover rotate micro-interaction */}
-        <div className="relative group cursor-pointer">
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-slate-800/90 border border-slate-700/80 p-0.5 overflow-hidden flex-shrink-0 shadow-xs group-hover:rotate-6 transition-transform duration-200">
-            <img
-              src={replyReadyImg}
-              alt="BetaBuddy Avatar"
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900"></span>
+    <div className="flex items-center justify-between h-[82px] px-6 py-[18px] bg-white dark:bg-slate-900 border-b border-[#F1F5F9] dark:border-slate-800 select-none flex-shrink-0 z-10">
+      <div className="flex items-center gap-3.5">
+        {/* Sidebar Toggle Button */}
+        {onToggleSidebar && (
+          <motion.button
+            type="button"
+            aria-label="Toggle Conversation History"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onToggleSidebar}
+            className={`p-2 rounded-xl border transition-colors cursor-pointer focus:outline-none ${
+              isSidebarOpen
+                ? 'bg-[#EEF2FF] border-[#5A67FF]/30 text-[#5A67FF]'
+                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-[#6B7280] hover:text-[#111827] dark:hover:text-white'
+            }`}
+            title="Conversation History"
+          >
+            <History className="w-5 h-5" />
+          </motion.button>
+        )}
+
+        {/* 48x48 Circular Avatar with White Background & Soft Shadow */}
+        <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-1 flex-shrink-0 flex items-center justify-center shadow-[0_4px_14px_rgba(0,0,0,0.06)] overflow-hidden">
+          <img
+            src={replyReadyImg}
+            alt="BetaBuddy Avatar"
+            className="w-full h-full object-contain"
+          />
         </div>
 
-        <div>
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-extrabold text-white tracking-tight leading-none">
+        <div className="flex flex-col justify-center">
+          {/* First line: BetaBuddy • Online */}
+          <div className="flex items-center gap-2">
+            <h3 className="text-[18px] font-bold text-[#111827] dark:text-white leading-tight">
               BetaBuddy
             </h3>
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Online
-            </span>
+            <div className="flex items-center gap-1.5 ml-0.5">
+              <span className="w-[8px] h-[8px] rounded-full bg-[#22C55E] inline-block flex-shrink-0" />
+              <span className="text-[14px] font-medium text-[#22C55E] leading-tight">
+                Online
+              </span>
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+
+          {/* Second line: Startup Validation Assistant */}
+          <p className="text-[14px] font-normal text-[#6B7280] dark:text-slate-400 leading-tight mt-0.5">
             Startup Validation Assistant
           </p>
         </div>
       </div>
 
+      {/* Right side: 24x24 Close X Icon with #F3F4F6 hover */}
       <motion.button
         type="button"
-        aria-label="Minimize BetaBuddy"
-        whileHover={{ scale: 1.1, backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
-        whileTap={{ scale: 0.9 }}
+        aria-label="Close BetaBuddy"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={onClose}
-        className="p-1.5 rounded-full text-slate-400 hover:text-white transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-600"
+        className="p-2 rounded-full text-[#6B7280] hover:text-[#111827] hover:bg-[#F3F4F6] dark:hover:bg-slate-800 transition-colors cursor-pointer focus:outline-none"
       >
-        <X className="w-5 h-5" />
+        <X className="w-6 h-6" />
       </motion.button>
     </div>
   )
