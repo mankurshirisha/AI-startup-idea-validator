@@ -1,10 +1,7 @@
 from typing import List, Dict, Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
-import os
 import json
-import logging
-from dotenv import load_dotenv
 from app.gemini_client import generate_content
 from app.logging_config import get_logger
 

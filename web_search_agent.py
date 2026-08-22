@@ -49,8 +49,8 @@ def _build_fallback_web_search_result(startup_idea: str, industry: str, location
                         real_competitors.append(domain)
 
     return {
-        "market_size": f"Estimated $1B-$5B global market for {industry}.",
-        "growth_rate": "12-18% CAGR",
+        "market_size": "Unavailable",
+        "growth_rate": "N/A",
         "industry": industry,
         "market_trends": [f"Increasing adoption of {industry} solutions", f"Growing demand in {location}"],
         "real_competitors": real_competitors[:5],

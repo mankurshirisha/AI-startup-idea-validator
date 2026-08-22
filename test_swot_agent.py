@@ -4,8 +4,17 @@ Endpoint: POST /api/swot-risk-agent on http://127.0.0.1:8903
 """
 
 import json
+import os
 import sys
+import pytest
 import requests
+
+RUN_LIVE = os.getenv("RUN_LIVE_SWOT_TESTS") == "1"
+
+pytestmark = pytest.mark.skipif(
+    not RUN_LIVE,
+    reason="Live SWOT agent server tests are skipped by default during automated testing. Set RUN_LIVE_SWOT_TESTS=1 to run manually."
+)
 
 BASE_URL = "http://127.0.0.1:8903"
 
@@ -101,6 +110,7 @@ def test_validation_error():
 
 
 if __name__ == "__main__":
+    os.environ["RUN_LIVE_SWOT_TESTS"] = "1"
     print()
     print("================================================================")
     print("  SWOT Risk Agent Test Suite")

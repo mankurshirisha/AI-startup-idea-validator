@@ -123,6 +123,7 @@ class SessionManager:
             timestamp=now_iso,
         )
 
+        sid = session.get("session_id") or (session_id.strip() if session_id else "")
         with self._lock:
             messages: List[dict] = session.get("messages", [])
             messages.append(message_obj.model_dump())
@@ -130,9 +131,9 @@ class SessionManager:
             session["messages"] = messages[-(MAX_EXCHANGES * 2):]
             session["updated_at"] = now_iso
             # Re-set in cache to refresh TTL clock
-            self._cache[session_id] = session
+            self._cache[sid] = session
 
-        logger.info("Session Refreshed | session_id: '%s' | timestamp: '%s'", session_id, now_iso)
+        logger.info("Session Refreshed | session_id: '%s' | timestamp: '%s'", sid, now_iso)
         return message_obj
 
     def get_history(self, session_id: str) -> List[ChatMessage]:
@@ -144,8 +145,11 @@ class SessionManager:
 
     def clear_session(self, session_id: str) -> None:
         """Explicitly destroy and remove a session from memory."""
+        if not session_id or not session_id.strip():
+            return
+        sid = session_id.strip()
         now_iso = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            if session_id in self._cache:
-                del self._cache[session_id]
+            if sid in self._cache:
+                del self._cache[sid]
                 logger.info("Session Deleted | session_id: '%s' | timestamp: '%s'", session_id, now_iso)

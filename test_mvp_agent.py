@@ -4,8 +4,17 @@ Endpoint: POST /api/mvp-feature-agent on http://127.0.0.1:8904
 """
 
 import json
+import os
 import sys
+import pytest
 import requests
+
+RUN_LIVE = os.getenv("RUN_LIVE_MVP_TESTS") == "1"
+
+pytestmark = pytest.mark.skipif(
+    not RUN_LIVE,
+    reason="Live MVP agent server tests are skipped by default during automated testing. Set RUN_LIVE_MVP_TESTS=1 to run manually."
+)
 
 BASE_URL = "http://127.0.0.1:8904"
 
@@ -125,6 +134,7 @@ def test_validation_error():
 
 
 if __name__ == "__main__":
+    os.environ["RUN_LIVE_MVP_TESTS"] = "1"
     print()
     print("================================================================")
     print("  MVP Feature Recommendation Agent Test Suite")

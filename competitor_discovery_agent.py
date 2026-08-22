@@ -197,6 +197,8 @@ def _tavily_competitor_search(query: str, location: str) -> list[dict]:
             detail="Unable to retrieve competitor data from the search service.",
         )
 
+    return merged
+
 def _build_unavailable_competitor_result(
     startup_idea: str,
     industry: str,
