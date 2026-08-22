@@ -27,6 +27,7 @@ import {
   CompetitorAnalysis,
   SWOTAnalysis,
   MVPRecommendation,
+  GTMStrategy,
   Recommendations,
   InvestorPerspective,
   RiskAnalysis,
@@ -449,7 +450,10 @@ export default function ResultsDashboard() {
           {/* 6. MVP Feature Recommendation */}
           <MVPRecommendation data={data} />
 
-          {/* 7. Recommendations */}
+          {/* 7. Go-to-Market Strategy */}
+          <GTMStrategy data={data} />
+
+          {/* 8. Recommendations */}
           <Recommendations recommendations={data.recommendations} data={data} />
 
           {/* 7. Investor Perspective */}

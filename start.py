@@ -38,8 +38,16 @@ def main():
     )
     processes.append(p_mvp)
 
+    # 4. Go-to-Market Strategy Agent (port 8905)
+    print("[START] GTM Strategy Agent -> http://127.0.0.1:8905")
+    p_gtm = subprocess.Popen(
+        [python_exe, "go_to_market_strategy_agent.py"],
+        cwd=project_dir,
+    )
+    processes.append(p_gtm)
+
     print("==========================================================")
-    print("  All 3 services running concurrently.")
+    print("  All 4 services running concurrently.")
     print("  Press Ctrl+C to stop all services.")
     print("==========================================================")
 

@@ -82,16 +82,22 @@ const AGENTS: Agent[] = [
     label: 'MVP Feature Recommendation Agent',
     description: 'Prioritizing core MVP feature set and post-launch roadmap',
   },
+  {
+    id: 'go-to-market',
+    label: 'Go-to-Market Strategy Agent',
+    description: 'Structuring customer acquisition channels, positioning, and launch plan',
+  },
 ]
 
 /* ─── Backend stage → AGENTS array index ─────────────── */
 const STAGE_TO_IDX: Record<string, number> = {
-  web_search:  0,
-  market_opp:  1,
-  competitor:   2,
-  comparison:   3,
-  swot_risk:    4,
-  mvp_feature:  5,
+  web_search:    0,
+  market_opp:    1,
+  competitor:     2,
+  comparison:     3,
+  swot_risk:      4,
+  mvp_feature:    5,
+  go_to_market:   6,
 }
 
 
@@ -287,7 +293,7 @@ export default function LoadingPage() {
               setApiResult(mapped)
               setAllDone(true)
               setRunningAgents(new Set())
-              setCompletedAgents(new Set([0, 1, 2, 3, 4, 5]))
+              setCompletedAgents(new Set(AGENTS.map((_, i) => i)))
               return
             }
 
@@ -668,8 +674,8 @@ export default function LoadingPage() {
                   }}
                 >
                   {allDone
-                    ? '6 of 6 Done'
-                    : `${completedAgents.size} of 6 Complete`}
+                    ? `${AGENTS.length} of ${AGENTS.length} Done`
+                    : `${completedAgents.size} of ${AGENTS.length} Complete`}
                 </span>
               </div>
             </div>

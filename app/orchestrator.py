@@ -30,6 +30,7 @@ _COMPETITOR_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
 _COMPARISON_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
 _SWOT_RISK_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
 _MVP_FEATURE_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
+_GTM_STRATEGY_CACHE: TTLCache = TTLCache(maxsize=256, ttl=3600)
 
 _ORCHESTRATOR_LOCK = threading.Lock()
 
@@ -331,5 +332,40 @@ def orchestrate_mvp_feature(
         market_result,
         competitor_result,
         swot_result,
+    )
+
+
+def _make_gtm_strategy_key(startup_idea: str, country: str, industry: str) -> str:
+    return _hash_key({"startup_idea": startup_idea, "country": country, "industry": industry})
+
+
+def orchestrate_gtm_strategy(
+    fn_run_agent,
+    request,
+    web_result: dict,
+    market_result: dict,
+    competitor_result: dict,
+    swot_result: dict,
+    mvp_result: dict,
+) -> dict:
+    """Orchestrate Go-to-Market Strategy Agent execution with caching and singleflight deduplication."""
+    web_result = web_result if isinstance(web_result, dict) else {}
+    industry = request.industry or web_result.get("industry", "")
+    cache_key = _make_gtm_strategy_key(
+        request.startupIdea,
+        request.targetCountry or "Global",
+        industry,
+    )
+    return _orchestrate_generic(
+        _GTM_STRATEGY_CACHE,
+        cache_key,
+        "GoToMarketStrategy",
+        fn_run_agent,
+        request,
+        web_result,
+        market_result,
+        competitor_result,
+        swot_result,
+        mvp_result,
     )
 

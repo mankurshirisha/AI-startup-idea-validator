@@ -118,6 +118,17 @@ export interface MVPRecommendationData {
   deferredFeatures: string[]
 }
 
+export interface GTMStrategyData {
+  targetCustomer: string
+  positioning: string
+  valueProposition: string
+  marketingChannels: string[]
+  customerAcquisitionStrategy: string[]
+  pricingStrategy?: string
+  launchPlan?: string[]
+  nextSteps?: string[]
+}
+
 export interface ValidationResult {
   idea: string
   description?: string
@@ -137,6 +148,7 @@ export interface ValidationResult {
   swotRecommendations?: string[]
   overallRiskLevel?: string
   mvp?: MVPRecommendationData
+  goToMarketStrategy?: GTMStrategyData
   insights?: MarketInsightsData
   categorizedRecommendations?: CategorizedRecommendation[]
   investorPerspective?: InvestorPerspectiveData

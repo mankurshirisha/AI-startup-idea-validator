@@ -40,6 +40,7 @@ from app.orchestrator import (
     orchestrate_comparison,
     orchestrate_swot_risk,
     orchestrate_mvp_feature,
+    orchestrate_gtm_strategy,
 )
 from app.semantic_cache import semantic_cache
 
@@ -299,6 +300,72 @@ def _run_mvp_job(
             ],
             "deferredFeatures": (request.keyFeatures or [])[3:],
         }
+
+
+def _run_gtm_job(
+    request: StartupRequest,
+    web_result: dict,
+    market_result: dict,
+    competitor_result: dict,
+    swot_result: dict,
+    mvp_result: dict,
+) -> dict:
+    """Isolated Go-to-Market Strategy job that calls the standalone agent endpoint on port 8905."""
+    gtm_endpoint = "http://127.0.0.1:8905/go-to-market-strategy"
+    mkt_res = market_result if isinstance(market_result, dict) else {}
+    comp_res = competitor_result if isinstance(competitor_result, dict) else {}
+    swot_res = swot_result if isinstance(swot_result, dict) else {}
+    mvp_res = mvp_result if isinstance(mvp_result, dict) else {}
+
+    target_cust = request.targetCustomer or "Early adopters and key target users"
+    mkt_opp_text = str(mkt_res.get("marketOpportunity", "") or mkt_res.get("summary", ""))
+    competitor_list = comp_res.get("competitors", [])
+    swot_dict = swot_res.get("swot_analysis", swot_res)
+
+    rec_features = []
+    if isinstance(mvp_res.get("features"), list):
+        for item in mvp_res["features"]:
+            if isinstance(item, dict) and "feature" in item:
+                rec_features.append(item["feature"])
+            elif isinstance(item, str):
+                rec_features.append(item)
+    if not rec_features:
+        rec_features = request.keyFeatures or ["Core Functionality"]
+
+    payload = {
+        "startupIdea": request.startupIdea,
+        "targetCustomer": target_cust,
+        "marketOpportunity": mkt_opp_text,
+        "competitors": competitor_list,
+        "swot": swot_dict if isinstance(swot_dict, dict) else {},
+        "recommendedFeatures": rec_features,
+    }
+    try:
+        resp = requests.post(gtm_endpoint, json=payload, timeout=25)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.exception("Failed calling Go-to-Market Strategy Agent at %s: %s", gtm_endpoint, exc)
+        return {
+            "status": "error",
+            "detail": str(exc),
+            "startupIdea": request.startupIdea,
+            "goToMarketStrategy": {
+                "targetCustomer": target_cust,
+                "positioning": "Position as a focused AI-driven solution for early adopters.",
+                "valueProposition": "Deliver immediate productivity gains with fast time-to-value.",
+                "marketingChannels": ["Social Media", "Content Marketing", "Direct Outreach"],
+                "customerAcquisitionStrategy": [
+                    "Identify priority early adopters",
+                    "Run a targeted pilot program",
+                    "Iterate quickly based on user feedback",
+                ],
+                "pricingStrategy": "Tiered SaaS subscription based on usage and feature access.",
+                "launchPlan": ["Soft launch to beta waitlist", "Public release launch"],
+                "nextSteps": ["Finalize core positioning", "Launch initial landing page"],
+            },
+        }
+
 
 
 @app.get(
@@ -647,6 +714,30 @@ def validate_stream(request: StartupRequest):
                 )
                 yield f"data: {json.dumps({'stage': 'mvp_feature', 'status': 'done'})}\n\n"
 
+                # ──────────────────────────────────────────────────
+                # STAGE 7 — Go-to-Market Strategy
+                # ──────────────────────────────────────────────────
+                yield f"data: {json.dumps({'stage': 'go_to_market', 'status': 'running'})}\n\n"
+                gtm_future = executor.submit(
+                    orchestrate_gtm_strategy,
+                    _run_gtm_job,
+                    request,
+                    web_result,
+                    market_result,
+                    competitor_result,
+                    swot_result,
+                    mvp_result,
+                )
+                logger.info("PIPELINE PROFILE | GTM Strategy Agent started")
+                gtm_result = await loop.run_in_executor(
+                    None, gtm_future.result
+                )
+                logger.info(
+                    "PIPELINE PROFILE | GTM Strategy Agent done | Elapsed: %.3fs",
+                    time.perf_counter() - t_parallel_start,
+                )
+                yield f"data: {json.dumps({'stage': 'go_to_market', 'status': 'done'})}\n\n"
+
 
             logger.info(
                 "PIPELINE PROFILE | Full Validation Stream Pipeline Total | Elapsed: %.3fs",
@@ -661,6 +752,7 @@ def validate_stream(request: StartupRequest):
                 "comparison": comparison_result,
                 "swot_analysis": swot_result,
                 "mvp_recommendation": mvp_result,
+                "go_to_market_strategy": gtm_result,
             }
 
             # ── Store in request-level cache & semantic cache ───────────────────

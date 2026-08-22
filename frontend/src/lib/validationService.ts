@@ -15,6 +15,7 @@ import type {
   CategorizedRecommendation,
   MVPFeature,
   MVPRecommendationData,
+  GTMStrategyData,
 } from '@/types/dashboard'
 
 
@@ -153,6 +154,20 @@ export interface BackendValidationResponse {
   }
   swot_analysis?: SwotAgentResponse
   mvp_recommendation?: MVPBackendResponse
+  go_to_market_strategy?: {
+    status?: string
+    startupIdea?: string
+    goToMarketStrategy?: {
+      targetCustomer?: string
+      positioning?: string
+      valueProposition?: string
+      marketingChannels?: string[]
+      customerAcquisitionStrategy?: string[]
+      pricingStrategy?: string
+      launchPlan?: string[]
+      nextSteps?: string[]
+    }
+  }
 }
 
 /**
@@ -321,6 +336,27 @@ export function mapBackendToValidationResult(
       status: 'completed',
       summary: `Benchmarked strengths, weaknesses, and product feature gaps.`,
       detail: `Evaluated market advantages and strategic risks.`,
+    },
+    {
+      id: 'swot-risk',
+      name: 'SWOT & Risk Analysis Agent',
+      status: 'completed',
+      summary: 'Evaluated internal strengths, weaknesses, and risk factors.',
+      detail: 'Generated risk mitigation matrices across 5 risk dimensions.',
+    },
+    {
+      id: 'mvp-feature',
+      name: 'MVP Feature Recommendation Agent',
+      status: 'completed',
+      summary: 'Prioritized core MVP features and post-launch roadmap.',
+      detail: 'Mapped feature priorities against customer value and resource effort.',
+    },
+    {
+      id: 'go-to-market',
+      name: 'Go-to-Market Strategy Agent',
+      status: 'completed',
+      summary: 'Defined positioning, channels, acquisition, and launch plan.',
+      detail: 'Structured actionable early-stage customer acquisition roadmap.',
     },
   ]
 
@@ -669,6 +705,27 @@ export function mapBackendToValidationResult(
     deferredFeatures: rawDeferred,
   }
 
+  // 18. Go-to-Market Strategy Mapping
+  const gtmRaw = data.go_to_market_strategy?.goToMarketStrategy ?? (data.go_to_market_strategy as any) ?? {}
+  const goToMarketStrategy: GTMStrategyData = {
+    targetCustomer: gtmRaw.targetCustomer || 'Early adopters and key target customers seeking optimized solution workflows.',
+    positioning: gtmRaw.positioning || 'Position as a targeted AI-driven solution addressing core industry pain points.',
+    valueProposition: gtmRaw.valueProposition || 'Deliver immediate value, low friction, and clear measurable ROI.',
+    marketingChannels: Array.isArray(gtmRaw.marketingChannels) && gtmRaw.marketingChannels.length > 0
+      ? gtmRaw.marketingChannels
+      : ['Social Media', 'Content Marketing', 'Direct Outreach', 'Industry Partnerships'],
+    customerAcquisitionStrategy: Array.isArray(gtmRaw.customerAcquisitionStrategy) && gtmRaw.customerAcquisitionStrategy.length > 0
+      ? gtmRaw.customerAcquisitionStrategy
+      : ['Identify high-priority early adopters', 'Run targeted pilot testing', 'Collect feedback and iterate', 'Expand to broader segments'],
+    pricingStrategy: gtmRaw.pricingStrategy || 'Tiered SaaS subscription model based on feature access and usage scale.',
+    launchPlan: Array.isArray(gtmRaw.launchPlan) && gtmRaw.launchPlan.length > 0
+      ? gtmRaw.launchPlan
+      : ['Soft launch to beta waitlist', 'Measure key retention metrics', 'Public product launch announcement'],
+    nextSteps: Array.isArray(gtmRaw.nextSteps) && gtmRaw.nextSteps.length > 0
+      ? gtmRaw.nextSteps
+      : ['Finalize core value prop positioning', 'Set up initial marketing channels', 'Launch beta pilot program'],
+  }
+
   return {
     idea,
     description: description || '',
@@ -687,6 +744,7 @@ export function mapBackendToValidationResult(
     swotRecommendations,
     overallRiskLevel,
     mvp,
+    goToMarketStrategy,
     insights,
     categorizedRecommendations,
     investorPerspective,
