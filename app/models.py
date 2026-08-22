@@ -17,3 +17,5 @@ class BetaBuddyChatRequest(BaseModel):
     sessionId: Optional[str] = "default_session"
     question: str
     validationResult: Optional[Dict[str, Any]] = None
+    dashboardId: Optional[str] = None
+    dashboard_id: Optional[str] = None

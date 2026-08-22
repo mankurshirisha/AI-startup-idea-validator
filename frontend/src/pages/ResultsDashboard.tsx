@@ -26,6 +26,8 @@ import {
   MarketOpportunity,
   CompetitorAnalysis,
   SWOTAnalysis,
+  MVPRecommendation,
+  GTMStrategy,
   Recommendations,
   InvestorPerspective,
   RiskAnalysis,
@@ -445,7 +447,13 @@ export default function ResultsDashboard() {
           {/* 5. SWOT Analysis (View Details toggle) */}
           <SWOTAnalysis data={data} />
 
-          {/* 6. Recommendations */}
+          {/* 6. MVP Feature Recommendation */}
+          <MVPRecommendation data={data} />
+
+          {/* 7. Go-to-Market Strategy */}
+          <GTMStrategy data={data} />
+
+          {/* 8. Recommendations */}
           <Recommendations recommendations={data.recommendations} data={data} />
 
           {/* 7. Investor Perspective */}
@@ -464,7 +472,7 @@ export default function ResultsDashboard() {
 
       {/* ── BetaBuddy Floating Chatbot Assistant (Lazy Loaded) ── */}
       <Suspense fallback={null}>
-        <BetaBuddy />
+        <BetaBuddy validationResult={data} />
       </Suspense>
     </div>
   )

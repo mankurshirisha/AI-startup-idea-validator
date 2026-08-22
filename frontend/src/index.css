@@ -24,6 +24,12 @@
   padding: 0;
 }
 
+:focus-visible {
+  outline: 2px solid #3b3bdb;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 html {
   font-family: 'DM Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px;
@@ -225,18 +231,27 @@ p, a, span, li {
 }
 
 /* ═══════════════════════════════════════════════════════
-   FOCUS & SCROLLBAR
+   SUBTLE CHAT SCROLLBAR
 ═══════════════════════════════════════════════════════ */
-:focus-visible {
-  outline: 2px solid #3b3bdb;
-  outline-offset: 3px;
-  border-radius: 4px;
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d0d0e8; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #b0b0d0; }
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #D1D5DB transparent;
+}
 
 /* ═══════════════════════════════════════════════════════
    FORM ELEMENTS
@@ -247,4 +262,27 @@ textarea { resize: vertical; }
 ::selection {
   background-color: rgba(59, 59, 219, 0.15);
   color: #1a1a2e;
+}
+
+/* ═══════════════════════════════════════════════════════
+   BETABUDDY CHAT WINDOW — Internal overflow protection
+═══════════════════════════════════════════════════════ */
+
+/* Prevent inline code from inheriting large font sizes inside chat bubbles */
+#betabuddy-chat-window code {
+  font-size: 11px;
+  background: rgba(90, 103, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* Protect all text containers from horizontal overflow */
+#betabuddy-chat-window * {
+  min-width: 0;
+}
+
+/* Ensure message bubbles don't create horizontal scroll */
+#betabuddy-chat-window .custom-scrollbar {
+  overflow-x: hidden;
 }

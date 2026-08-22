@@ -1,4 +1,5 @@
 import time
+import pytest
 from unittest.mock import MagicMock
 from app.chatbot import (
     LLMGateway,
@@ -8,87 +9,109 @@ from app.chatbot import (
     ChatbotTimeoutError,
     LLMGenerationError,
 )
+from app.chatbot.llm_gateway import HIGH_DEMAND_MESSAGE
 
-prompt_pkg = PromptPackage(
+PROMPT_PKG = PromptPackage(
     system_prompt="You are BetaBuddy.",
     user_prompt="Explain my SWOT analysis",
 )
 
-# 1. Successful Generation & Trimming
-mock_client_success = MagicMock()
-mock_raw_res = MagicMock()
-mock_raw_res.text = "   ### Answer\nYour SWOT looks strong.   "
-mock_client_success.models.generate_content.return_value = mock_raw_res
 
-gateway = LLMGateway(gemini_client=mock_client_success)
-res = gateway.generate(prompt_pkg)
+def _setup_mock_client(text_val: str = "", side_effect: any = None):
+    mock_client = MagicMock()
+    if side_effect:
+        mock_client.models.generate_content.side_effect = side_effect
+        mock_client.interactions.create.side_effect = side_effect
+    else:
+        mock_raw = MagicMock()
+        mock_raw.text = text_val
+        mock_raw.output_text = text_val
+        mock_client.models.generate_content.return_value = mock_raw
+        mock_client.interactions.create.return_value = mock_raw
+    return mock_client
 
-assert isinstance(res, LLMResponse)
-assert res.response_text == "### Answer\nYour SWOT looks strong."
-assert res.latency_ms > 0
-print("[OK] Successful generation & trimming")
 
-# 2. Empty Response Rejection
-mock_client_empty = MagicMock()
-mock_raw_empty = MagicMock()
-mock_raw_empty.text = "   "
-mock_client_empty.models.generate_content.return_value = mock_raw_empty
+def test_successful_generation_and_trimming():
+    mock_client = _setup_mock_client("   ### Answer\nYour SWOT looks strong.   ")
+    gateway = LLMGateway(gemini_client=mock_client)
+    res = gateway.generate(PROMPT_PKG)
 
-gateway_empty = LLMGateway(gemini_client=mock_client_empty)
-try:
-    gateway_empty.generate(prompt_pkg)
-    assert False, "Should raise InvalidLLMResponse for empty output"
-except InvalidLLMResponse:
+    assert isinstance(res, LLMResponse)
+    assert res.response_text == "### Answer\nYour SWOT looks strong."
+    assert res.latency_ms > 0
+
+
+def test_empty_response_rejection():
+    mock_client = _setup_mock_client("   ")
+    gateway_empty = LLMGateway(gemini_client=mock_client)
+    res = gateway_empty.generate(PROMPT_PKG)
+    assert res.response_text == HIGH_DEMAND_MESSAGE
+
+
+def test_character_limit_enforcement():
+    mock_client = _setup_mock_client("A" * 3005)
+    gateway = LLMGateway(gemini_client=mock_client)
+    res_long = gateway.generate(PROMPT_PKG)
+    assert len(res_long.response_text) == 3000
+
+
+def test_timeout_handling():
+    mock_client = _setup_mock_client(side_effect=Exception("Request timed out after 20s"))
+    gateway_timeout = LLMGateway(gemini_client=mock_client)
+    res = gateway_timeout.generate(PROMPT_PKG)
+    assert res.response_text == HIGH_DEMAND_MESSAGE
+
+
+def test_retry_logic_on_429_status_error():
+    mock_raw_retry_success = MagicMock()
+    mock_raw_retry_success.text = "Success on retry!"
+    mock_raw_retry_success.output_text = "Success on retry!"
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [
+        Exception("429 Resource Exhausted"),
+        mock_raw_retry_success,
+    ]
+    mock_client.interactions.create.side_effect = [
+        Exception("429 Resource Exhausted"),
+        mock_raw_retry_success,
+    ]
+
+    gateway = LLMGateway(gemini_client=mock_client)
+    res_retry = gateway.generate(PROMPT_PKG)
+    assert res_retry.response_text == "Success on retry!"
+    assert mock_client.models.generate_content.call_count == 2
+
+
+def run_benchmark():
+    mock_client = _setup_mock_client("   ### Answer\nYour SWOT looks strong.   ")
+    gateway = LLMGateway(gemini_client=mock_client)
+    iterations = 100
+    t0 = time.perf_counter()
+    for _ in range(iterations):
+        _ = gateway.generate(PROMPT_PKG)
+    t1 = time.perf_counter()
+    avg_ms = ((t1 - t0) * 1000) / iterations
+
+    print(f"\n--- LATENCY BENCHMARK (MOCKED GATEWAY) ---")
+    print(f"Average Gateway Overhead: {avg_ms:.4f} ms per call")
+
+
+if __name__ == "__main__":
+    test_successful_generation_and_trimming()
+    print("[OK] Successful generation & trimming")
+
+    test_empty_response_rejection()
     print("[OK] Empty response rejection")
 
-# 3. Character Limit Enforcement (>3000 chars)
-mock_client_long = MagicMock()
-mock_raw_long = MagicMock()
-mock_raw_long.text = "A" * 3005
-mock_client_long.models.generate_content.return_value = mock_raw_long
+    test_character_limit_enforcement()
+    print("[OK] Character limit enforcement (>3000 chars safely truncated)")
 
-gateway_long = LLMGateway(gemini_client=mock_client_long)
-try:
-    gateway_long.generate(prompt_pkg)
-    assert False, "Should raise InvalidLLMResponse for >3000 chars"
-except InvalidLLMResponse:
-    print("[OK] Character limit enforcement (>3000 chars)")
-
-# 4. Timeout Handling
-mock_client_timeout = MagicMock()
-mock_client_timeout.models.generate_content.side_effect = Exception("Request timed out after 20s")
-
-gateway_timeout = LLMGateway(gemini_client=mock_client_timeout)
-try:
-    gateway_timeout.generate(prompt_pkg)
-    assert False, "Should raise ChatbotTimeoutError on timeout"
-except ChatbotTimeoutError:
+    test_timeout_handling()
     print("[OK] Timeout handling")
 
-# 5. Retry Logic on 429 Status Error
-mock_client_retry = MagicMock()
-mock_raw_retry_success = MagicMock()
-mock_raw_retry_success.text = "Success on retry!"
-mock_client_retry.models.generate_content.side_effect = [
-    Exception("429 Resource Exhausted"),
-    mock_raw_retry_success,
-]
+    test_retry_logic_on_429_status_error()
+    print("[OK] Retry logic (retried on 429 and succeeded)")
 
-gateway_retry = LLMGateway(gemini_client=mock_client_retry)
-res_retry = gateway_retry.generate(prompt_pkg)
-assert res_retry.response_text == "Success on retry!"
-assert mock_client_retry.models.generate_content.call_count == 2
-print("[OK] Retry logic (retried on 429 and succeeded)")
-
-# 6. Benchmark
-iterations = 100
-t0 = time.perf_counter()
-for _ in range(iterations):
-    _ = gateway.generate(prompt_pkg)
-t1 = time.perf_counter()
-avg_ms = ((t1 - t0) * 1000) / iterations
-
-print(f"\n--- LATENCY BENCHMARK (MOCKED GATEWAY) ---")
-print(f"Average Gateway Overhead: {avg_ms:.4f} ms per call")
-
-print("\nALL PHASE 7 UNIT TESTS PASSED SUCCESSFULLY!")
+    run_benchmark()
+    print("\nALL PHASE 7 UNIT TESTS PASSED SUCCESSFULLY!")

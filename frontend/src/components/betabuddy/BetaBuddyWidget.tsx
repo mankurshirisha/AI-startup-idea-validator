@@ -68,7 +68,7 @@ export const BetaBuddyWidget: React.FC<BetaBuddyWidgetProps> = ({ validationResu
   // Handle User Message Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const question = inputText.strip ? inputText.strip() : inputText.trim()
+    const question = inputText.trim()
     if (!question || isTyping) return
 
     // 1. Add User Message

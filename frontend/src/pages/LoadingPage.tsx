@@ -72,14 +72,32 @@ const AGENTS: Agent[] = [
     label: 'Comparison Agent',
     description: 'Benchmarking against industry benchmarks and alternatives',
   },
+  {
+    id: 'swot-risk',
+    label: 'SWOT & Risk Analysis Agent',
+    description: 'Evaluating internal strengths & weaknesses alongside external risks',
+  },
+  {
+    id: 'mvp-feature',
+    label: 'MVP Feature Recommendation Agent',
+    description: 'Prioritizing core MVP feature set and post-launch roadmap',
+  },
+  {
+    id: 'go-to-market',
+    label: 'Go-to-Market Strategy Agent',
+    description: 'Structuring customer acquisition channels, positioning, and launch plan',
+  },
 ]
 
 /* ─── Backend stage → AGENTS array index ─────────────── */
 const STAGE_TO_IDX: Record<string, number> = {
-  web_search: 0,
-  market_opp: 1,
-  competitor:  2,
-  comparison:  3,
+  web_search:    0,
+  market_opp:    1,
+  competitor:     2,
+  comparison:     3,
+  swot_risk:      4,
+  mvp_feature:    5,
+  go_to_market:   6,
 }
 
 
@@ -275,7 +293,7 @@ export default function LoadingPage() {
               setApiResult(mapped)
               setAllDone(true)
               setRunningAgents(new Set())
-              setCompletedAgents(new Set([0, 1, 2, 3]))
+              setCompletedAgents(new Set(AGENTS.map((_, i) => i)))
               return
             }
 
@@ -363,12 +381,11 @@ export default function LoadingPage() {
   const getStatus = (idx: number): AgentStatus => {
     if (completedAgents.has(idx) || allDone) return 'done'
     if (runningAgents.has(idx)) return 'running'
-    // Logical dependency rules: if a later stage is active/done, earlier dependent stages are done
-    if (idx === 0 && (runningAgents.has(1) || runningAgents.has(2) || runningAgents.has(3) || completedAgents.has(1) || completedAgents.has(2) || completedAgents.has(3))) {
-      return 'done'
-    }
-    if ((idx === 1 || idx === 2) && (runningAgents.has(3) || completedAgents.has(3))) {
-      return 'done'
+    // Logical dependency rules: if a later stage is active or completed, earlier dependent stages are done
+    for (let later = idx + 1; later < AGENTS.length; later++) {
+      if (runningAgents.has(later) || completedAgents.has(later)) {
+        return 'done'
+      }
     }
     return 'waiting'
   }
@@ -657,8 +674,8 @@ export default function LoadingPage() {
                   }}
                 >
                   {allDone
-                    ? '4 of 4 Done'
-                    : `${completedAgents.size} of 4 Complete`}
+                    ? `${AGENTS.length} of ${AGENTS.length} Done`
+                    : `${completedAgents.size} of ${AGENTS.length} Complete`}
                 </span>
               </div>
             </div>

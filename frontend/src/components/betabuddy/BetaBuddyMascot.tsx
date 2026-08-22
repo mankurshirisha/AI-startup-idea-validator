@@ -43,7 +43,7 @@ export const BetaBuddyMascot: React.FC<BetaBuddyMascotProps> = React.memo(({
   const currentImg = MASCOT_MAP[state] || helloImg
 
   // Motion variants according to mascot state requirement
-  const getMotionProps = () => {
+  const getMotionProps = (): any => {
     if (shouldReduceMotion) {
       return {
         initial: { opacity: 1, scale: 1, y: 0 },
@@ -84,7 +84,7 @@ export const BetaBuddyMascot: React.FC<BetaBuddyMascotProps> = React.memo(({
       transition: {
         duration: 3,
         repeat: Infinity,
-        ease: 'easeInOut',
+        ease: 'easeInOut' as any,
       },
     }
   }

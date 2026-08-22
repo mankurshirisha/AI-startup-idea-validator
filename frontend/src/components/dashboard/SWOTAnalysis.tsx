@@ -2,6 +2,7 @@
  * SWOTAnalysis.tsx
  * Section 6 — SWOT Analysis with progressive disclosure.
  * Shows top points by default with "View Details" toggle to reveal all points.
+ * Displays overall risk level badge and actionable SWOT recommendations from the standalone SWOT Risk Agent.
  */
 import { useState } from 'react'
 import { motion } from 'framer-motion'
@@ -10,7 +11,7 @@ import { C, FONT, RADIUS, fadeUp } from './tokens'
 import { SectionHeader } from './SectionHeader'
 import { Badge } from './Badge'
 import type { BadgeVariant } from './Badge'
-import { Target, CheckCircle2, AlertTriangle, TrendingUp, ShieldAlert, ChevronDown, ChevronUp } from 'lucide-react'
+import { Target, CheckCircle2, AlertTriangle, TrendingUp, ShieldAlert, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 
 interface Props {
   data: ValidationResult
@@ -25,6 +26,10 @@ export function SWOTAnalysis({ data }: Props) {
     opportunities: ['International expansion', 'Proprietary AI moat', 'Ecosystem partnerships'],
     threats: ['Incumbent feature expansion', 'AI model commoditization', 'Data privacy compliance'],
   }
+
+  const overallRisk = data.overallRiskLevel
+  const riskVariant: BadgeVariant =
+    overallRisk === 'Low' ? 'success' : overallRisk === 'High' ? 'danger' : 'warning'
 
   const sections: Array<{
     title: string
@@ -86,25 +91,32 @@ export function SWOTAnalysis({ data }: Props) {
         title="SWOT Analysis"
         description="Internal advantages & weaknesses paired with external market growth opportunities & threats."
         badge={
-          <button
-            onClick={() => setExpanded(!expanded)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              backgroundColor: '#f4f4fc',
-              border: `1px solid ${C.border}`,
-              borderRadius: RADIUS.pill,
-              padding: '5px 14px',
-              fontSize: '12px',
-              fontWeight: 700,
-              color: C.accent,
-              cursor: 'pointer',
-            }}
-          >
-            <span>{expanded ? 'Hide Details' : 'View Full SWOT Details'}</span>
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {overallRisk && (
+              <Badge variant={riskVariant} size="sm">
+                Risk: {overallRisk}
+              </Badge>
+            )}
+            <button
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                backgroundColor: '#f4f4fc',
+                border: `1px solid ${C.border}`,
+                borderRadius: RADIUS.pill,
+                padding: '5px 14px',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: C.accent,
+                cursor: 'pointer',
+              }}
+            >
+              <span>{expanded ? 'Hide Details' : 'View Full SWOT Details'}</span>
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          </div>
         }
       />
 
@@ -171,6 +183,81 @@ export function SWOTAnalysis({ data }: Props) {
           )
         })}
       </div>
+
+      {/* ── SWOT Strategic Recommendations ── */}
+      {data.swotRecommendations && data.swotRecommendations.length > 0 && (
+        <motion.div
+          {...fadeUp(0.24)}
+          style={{
+            marginTop: '20px',
+            backgroundColor: '#f8f9fe',
+            border: `1px solid ${C.border}`,
+            borderRadius: RADIUS.xl,
+            padding: '18px 22px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.01)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <div
+              style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: RADIUS.md,
+                backgroundColor: '#3b3bdb12',
+                border: '1px solid #3b3bdb25',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Sparkles size={14} color={C.accent} strokeWidth={2.2} />
+            </div>
+            <h4 style={{ fontSize: '14px', fontWeight: 800, color: C.primary, margin: 0 }}>
+              SWOT Strategic Recommendations
+            </h4>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+            {data.swotRecommendations.map((rec, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  backgroundColor: '#ffffff',
+                  border: `1px solid ${C.border}`,
+                  borderRadius: RADIUS.lg,
+                  padding: '12px 14px',
+                  fontSize: '12.5px',
+                  color: C.secondary,
+                  lineHeight: '1.45',
+                }}
+              >
+                <span
+                  style={{
+                    backgroundColor: C.accent,
+                    color: '#ffffff',
+                    borderRadius: '50%',
+                    width: '18px',
+                    height: '18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    marginTop: '1px',
+                  }}
+                >
+                  {idx + 1}
+                </span>
+                <span>{rec}</span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </section>
   )
 }

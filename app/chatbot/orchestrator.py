@@ -91,15 +91,26 @@ class BetaBuddyOrchestrator:
         intent_result = self.classifier.classify(user_question)
         logger.debug("Intent classified: '%s' (confidence: %.2f)", intent_result.intent, intent_result.confidence)
 
-        # Check confidence threshold for clarification
-        if intent_result.confidence < self.min_confidence or intent_result.intent == "UNKNOWN":
-            empty_retrieved = self.retriever.retrieve(knowledge, intent_result, history)
-            logger.debug("Confidence below threshold (%.2f); clarification required", intent_result.confidence)
+        # Check if clarification is required (empty question, UNKNOWN intent, or low confidence)
+        needs_clarification = (
+            not user_question
+            or not user_question.strip()
+            or intent_result.intent == "UNKNOWN"
+            or intent_result.confidence < self.min_confidence
+        )
+
+        if needs_clarification:
+            clarification_retrieved = self.retriever.retrieve(knowledge, intent_result, history)
+            logger.debug(
+                "Clarification required | intent: '%s' | confidence: %.2f",
+                intent_result.intent,
+                intent_result.confidence,
+            )
             return PreparedChatRequest(
                 session_id=session_id,
                 dashboard_id=dashboard_id,
                 intent=intent_result.intent,
-                retrieved_context=empty_retrieved,
+                retrieved_context=clarification_retrieved,
                 prompt_package=None,
                 conversation_history=history,
                 status="clarification_required",

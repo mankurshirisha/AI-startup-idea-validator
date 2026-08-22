@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from tavily import TavilyClient
 
-from app.gemini_client import generate_content
+from app.gemini_client import generate_content, _extract_json_like_text
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -32,6 +32,34 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 if not TAVILY_API_KEY:
     raise RuntimeError("TAVILY_API_KEY not found.")
+
+
+def _build_fallback_web_search_result(startup_idea: str, industry: str, location: str, processed_sources: list) -> dict:
+    """Build a structured fallback web search result when Gemini is temporarily unavailable."""
+    real_competitors = []
+    verified_sources = []
+    if processed_sources and isinstance(processed_sources, list):
+        for s in processed_sources:
+            url = s.get("url", "")
+            if url:
+                verified_sources.append(url)
+                if "google" not in url:
+                    domain = url.split("//")[-1].split("/")[0].replace("www.", "").capitalize()
+                    if domain and domain not in real_competitors:
+                        real_competitors.append(domain)
+
+    return {
+        "market_size": "Unavailable",
+        "growth_rate": "N/A",
+        "industry": industry,
+        "market_trends": [f"Increasing adoption of {industry} solutions", f"Growing demand in {location}"],
+        "real_competitors": real_competitors[:5],
+        "confidence_score": 50,
+        "verified_sources": verified_sources[:5],
+        "raw_sources": processed_sources,
+        "status": "fallback_used",
+    }
+
 
 # ==========================================================
 # CLIENTS
@@ -84,7 +112,10 @@ def _tavily_search(query: str, depth: str, max_results: int) -> list[dict]:
         )
         results = search.get("results", [])
         return [
-            {"url": r.get("url"), "content": r.get("content")}
+            {
+                "url": r.get("url"),
+                "content": (r.get("content") or "").strip()[:300],  # Truncate content to 300 chars max
+            }
             for r in results
             if r.get("url") and r.get("content")
         ]
@@ -94,38 +125,22 @@ def _tavily_search(query: str, depth: str, max_results: int) -> list[dict]:
 
 
 def _compact_json(items: list[dict]) -> str:
-    """Serialize a list of dicts as compact JSON to reduce Gemini prompt tokens.
-
-    Replaces json.dumps(items, indent=2) which adds ~35% extra whitespace that
-    Gemini still tokenizes. Compact format is semantically identical — the model
-    parses it the same way. Saves ~200-400 tokens per agent call.
-    """
+    """Serialize a list of dicts as compact JSON to reduce Gemini prompt tokens."""
     return "[\n" + ",\n".join(json.dumps(item, ensure_ascii=False) for item in items) + "\n]"
 
 
 def _single_comprehensive_search(query: str) -> list[dict]:
-    """Single advanced Tavily search — replaces the parallel dual-query strategy.
-
-    The previous approach fired basic (1 credit) + advanced (2 credits) on the
-    SAME query simultaneously, consuming 3 Tavily credits per request.
-
-    Advanced search returns higher-quality, more detailed results than basic and
-    is effectively a superset. Requesting advanced with max_results=8 provides
-    equal or better source coverage at 2 credits (33% savings per request).
-
-    Emergency fallback: if advanced returns fewer than 3 results (API error or
-    thin topic), a basic search supplements without blocking the happy path.
-    """
-    results = _tavily_search(query, "advanced", 8)
-    if len(results) < 3:
+    """Single advanced Tavily search with deduplication and max 5 top results."""
+    results = _tavily_search(query, "advanced", 5)
+    if len(results) < 2:
         logger.info(
             "Advanced search returned only %d results; supplementing with basic search",
             len(results),
         )
-        basic = _tavily_search(query, "basic", 8)
+        basic = _tavily_search(query, "basic", 5)
         seen_urls = {r.get("url", "") for r in results}
         results += [r for r in basic if r.get("url", "") not in seen_urls]
-    return results[:8]
+    return results[:5]
 
 
 # ==========================================================
@@ -236,18 +251,33 @@ Return ONLY valid JSON (no markdown/fences) matching this exact schema:
     try:
         logger.info("Starting Gemini analysis request")
         raw = generate_content(prompt)
-        result = json.loads(raw)
-        if isinstance(result, dict):
-            result["raw_sources"] = processed_sources
+
+        if not raw or not raw.strip() or "high demand" in raw.lower():
+            logger.error("Web search agent received empty or fallback AI response")
+            return _build_fallback_web_search_result(idea, industry, target_country, processed_sources)
+
+        cleaned_text = _extract_json_like_text(raw)
+        if not cleaned_text:
+            logger.error("Web search agent could not extract JSON from raw response")
+            return _build_fallback_web_search_result(idea, industry, target_country, processed_sources)
+
+        try:
+            result = json.loads(cleaned_text)
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.error("Web search agent JSON parse error: %s | Raw response: %s", exc, raw[:200])
+            return _build_fallback_web_search_result(idea, industry, target_country, processed_sources)
+
+        if not isinstance(result, dict):
+            logger.error("Web search agent returned non-dict JSON")
+            return _build_fallback_web_search_result(idea, industry, target_country, processed_sources)
+
+        result["raw_sources"] = processed_sources
         logger.info("Web search agent completed successfully")
         return result
 
-    except Exception:
-        logger.exception("Gemini analysis failed while processing startup idea")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to generate market analysis from the AI service.",
-        ) from None
+    except Exception as exc:
+        logger.exception("Gemini analysis failed while processing startup idea: %s", exc)
+        return _build_fallback_web_search_result(idea, industry, target_country, processed_sources)
 
 
 # ==========================================================

@@ -25,6 +25,7 @@ def process_chat_request(
     session_id: str,
     question: str,
     validation_result: Optional[dict] = None,
+    dashboard_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Process incoming BetaBuddy user question.
 
@@ -32,6 +33,7 @@ def process_chat_request(
         session_id: Unique session identifier string.
         question: User query string.
         validation_result: Optional startup validation result payload.
+        dashboard_id: Optional dashboard identifier string for stored dashboard lookup.
 
     Returns:
         dict: Standardized chat response object.
@@ -53,7 +55,29 @@ def process_chat_request(
     intent, confidence = classify_intent(question)
     logger.info("Intent classified: '%s' (confidence: %.2f)", intent, confidence)
 
-    # 3. Knowledge Base Construction (In-Memory, Session Isolated)
+    # 3. Knowledge Base Construction (In-Memory, Session Isolated & Dashboard Reuse)
+    if not validation_result:
+        from app.chatbot.service import BetaBuddyService
+        _service = BetaBuddyService()
+
+        target_dashboard_id = dashboard_id
+        if not target_dashboard_id and session_id:
+            try:
+                sess_data = _service.session_manager.get_session(session_id, auto_heal=False)
+                target_dashboard_id = sess_data.get("dashboard_id")
+            except Exception:
+                pass
+
+        if target_dashboard_id:
+            validation_result = _service.get_dashboard(target_dashboard_id)
+
+        # Fallback to session_id lookup for backwards compatibility
+        if not validation_result:
+            validation_result = _service.get_dashboard(session_id) or {}
+
+        if validation_result:
+            logger.info("Reused stored dashboard result for session '%s' (dashboard_id: '%s')", session_id, target_dashboard_id or session_id)
+
     kb = build_knowledge_base(validation_result or {})
 
     # 4. Context Retrieval (Minimal Required Context Only)
@@ -68,10 +92,13 @@ def process_chat_request(
     # 7. Gemini LLM Call (MAX 1 CALL, ZERO Tavily)
     raw_response = ""
     try:
+        logger.info("DIAGNOSTICS | Chat Gemini Request Started | Intent: %s | Prompt Length: %d", intent, len(prompt))
         raw_response = generate_content(prompt)
+        logger.info("DIAGNOSTICS | Chat Gemini Request Completed | Intent: %s | Raw Length: %d", intent, len(raw_response))
     except Exception as exc:
-        logger.exception("Gemini call failed in chat service")
+        logger.exception("DIAGNOSTICS | Gemini call failed in chat service | Exception: %s | Error: %s", type(exc).__name__, exc)
         raw_response = "I couldn't find that information in your startup validation dashboard."
+
 
     # 8. Response Formatter
     formatted_answer = format_response(raw_response, intent)
