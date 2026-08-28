@@ -1,75 +1,48 @@
+"""
+start.py (Root Launcher)
+Forwards startup to backend/start.py while maintaining full backward compatibility
+with existing Render, local, and CI/CD start commands (`python start.py`).
+"""
+
 import os
 import subprocess
 import sys
-import time
 
 
 def main():
-    python_exe = sys.executable
-    project_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.join(repo_root, "backend")
+    backend_start = os.path.join(backend_dir, "start.py")
 
-    processes = []
+    if not os.path.exists(backend_start):
+        print(f"[ERROR] Could not find backend start script at: {backend_start}", file=sys.stderr)
+        sys.exit(1)
 
-    print("==========================================================")
-    print("  AI Startup Idea Validator — Multi-Agent Service Runner")
-    print("==========================================================")
-
-    # 1. Main FastAPI Backend (port 8000)
-    print("[START] Main API -> http://127.0.0.1:8000")
-    p_main = subprocess.Popen(
-        [python_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-        cwd=project_dir,
+    # Propagate environment with backend in PYTHONPATH
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{backend_dir}{os.pathsep}{existing_pythonpath}"
+        if existing_pythonpath
+        else backend_dir
     )
-    processes.append(p_main)
-
-    # 2. SWOT Risk Agent (port 8903)
-    print("[START] SWOT Agent -> http://127.0.0.1:8903")
-    p_swot = subprocess.Popen(
-        [python_exe, "swot_risk_agent.py"],
-        cwd=project_dir,
-    )
-    processes.append(p_swot)
-
-    # 3. MVP Feature Recommendation Agent (port 8904)
-    print("[START] MVP Agent -> http://127.0.0.1:8904")
-    p_mvp = subprocess.Popen(
-        [python_exe, "mvp_feature_recommendation_agent.py"],
-        cwd=project_dir,
-    )
-    processes.append(p_mvp)
-
-    # 4. Go-to-Market Strategy Agent (port 8905)
-    print("[START] GTM Strategy Agent -> http://127.0.0.1:8905")
-    p_gtm = subprocess.Popen(
-        [python_exe, "go_to_market_strategy_agent.py"],
-        cwd=project_dir,
-    )
-    processes.append(p_gtm)
-
-    print("==========================================================")
-    print("  All 4 services running concurrently.")
-    print("  Press Ctrl+C to stop all services.")
-    print("==========================================================")
 
     try:
-        while True:
-            time.sleep(1)
-            # If any process exits unexpectedly, report and monitor
-            for p in processes:
-                if p.poll() is not None:
-                    time.sleep(1)
+        proc = subprocess.Popen(
+            [sys.executable, backend_start] + sys.argv[1:],
+            cwd=backend_dir,
+            env=env,
+        )
+        proc.wait()
+        sys.exit(proc.returncode)
     except KeyboardInterrupt:
-        print("\n[STOPPING] Terminating all services...")
-    finally:
-        for p in processes:
-            if p.poll() is None:
-                p.terminate()
-        for p in processes:
-            try:
-                p.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                p.kill()
-        print("[STOPPED] All services shut down cleanly.")
+        print("\n[STOPPING] Shutting down backend runner...")
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
