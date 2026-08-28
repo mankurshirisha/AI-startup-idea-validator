@@ -52,6 +52,11 @@ try:
                                           MarketOpportunityRequest,
                                           run_market_opportunity_agent)
     from web_search_agent import IdeaRequest, run_web_search_agent
+    from swot_risk_agent import SwotRiskRequest, run_swot_risk_agent
+    from mvp_feature_recommendation_agent import (MVPFeatureRequest,
+                                                  run_mvp_feature_recommendation_agent)
+    from go_to_market_strategy_agent import (GTMStrategyRequest,
+                                             run_go_to_market_strategy)
 
 except ImportError:
     from comparison_agent import ComparisonRequest, run_comparison_agent
@@ -66,6 +71,16 @@ except ImportError:
         run_market_opportunity_agent,
     )
     from web_search_agent import IdeaRequest, run_web_search_agent
+    from swot_risk_agent import SwotRiskRequest, run_swot_risk_agent
+    from mvp_feature_recommendation_agent import (
+        MVPFeatureRequest,
+        run_mvp_feature_recommendation_agent,
+    )
+    from go_to_market_strategy_agent import (
+        GTMStrategyRequest,
+        run_go_to_market_strategy,
+    )
+
 
 
 logger = get_logger(__name__)
@@ -201,28 +216,25 @@ def _run_swot_job(
     market_result: dict,
     competitor_result: dict,
 ) -> dict:
-    """Isolated SWOT & Risk Analysis job that calls the standalone agent endpoint on port 8903."""
-    swot_endpoint = "http://127.0.0.1:8903/api/swot-risk-agent"
+    """Isolated SWOT & Risk Analysis job using direct in-process Python execution."""
     web_res = web_result if isinstance(web_result, dict) else {}
     comp_res = competitor_result if isinstance(competitor_result, dict) else {}
-    payload = {
-        "startupIdea": request.startupIdea,
-        "description": request.description or "",
-        "industry": request.industry or web_res.get("industry", "General Tech"),
-        "targetCustomer": request.targetCustomer or "General Consumers",
-        "targetCountry": request.targetCountry or "Global",
-        "startupStage": request.startupStage or "Idea",
-        "businessModel": request.businessModel or "B2C",
-        "keyFeatures": request.keyFeatures or [],
-        "marketData": market_result or {},
-        "competitors": comp_res.get("competitors", []),
-    }
+    swot_req = SwotRiskRequest(
+        startupIdea=request.startupIdea,
+        description=request.description or "",
+        industry=request.industry or web_res.get("industry", "General Tech"),
+        targetCustomer=request.targetCustomer or "General Consumers",
+        targetCountry=request.targetCountry or "Global",
+        startupStage=request.startupStage or "Idea",
+        businessModel=request.businessModel or "B2C",
+        keyFeatures=request.keyFeatures or [],
+        marketData=market_result or {},
+        competitors=comp_res.get("competitors", []),
+    )
     try:
-        resp = requests.post(swot_endpoint, json=payload, timeout=25)
-        resp.raise_for_status()
-        return resp.json()
+        return run_swot_risk_agent(swot_req)
     except Exception as exc:
-        logger.exception("Failed calling SWOT Risk Agent at %s: %s", swot_endpoint, exc)
+        logger.exception("Failed executing SWOT Risk Agent: %s", exc)
         return {
             "status": "error",
             "detail": str(exc),
@@ -245,8 +257,7 @@ def _run_mvp_job(
     competitor_result: dict,
     swot_result: dict,
 ) -> dict:
-    """Isolated MVP Feature Recommendation job that calls the standalone agent endpoint on port 8904."""
-    mvp_endpoint = "http://127.0.0.1:8904/api/mvp-feature-agent"
+    """Isolated MVP Feature Recommendation job using direct in-process Python execution."""
     web_res = web_result if isinstance(web_result, dict) else {}
     mkt_res = market_result if isinstance(market_result, dict) else {}
     comp_res = competitor_result if isinstance(competitor_result, dict) else {}
@@ -255,27 +266,25 @@ def _run_mvp_job(
     target_cust = [request.targetCustomer] if request.targetCustomer else ["General Users"]
     recs = (swot_res.get("recommendations", []) if isinstance(swot_res, dict) else []) or (mkt_res.get("recommendations", []) if isinstance(mkt_res, dict) else [])
 
-    payload = {
-        "startupIdea": request.startupIdea,
-        "description": request.description or "",
-        "industry": request.industry or web_res.get("industry", "Technology"),
-        "location": request.targetCountry or "Global",
-        "startupStage": request.startupStage or "Idea",
-        "businessModel": request.businessModel or "B2B",
-        "targetCustomer": target_cust,
-        "keyFeatures": request.keyFeatures or [],
-        "marketOpportunity": mkt_res.get("marketOpportunity", {}),
-        "marketOpportunityScore": mkt_res.get("marketOpportunityScore", 0),
-        "customerInsights": mkt_res.get("customerInsights", {}),
-        "recommendations": recs,
-        "competitors": comp_res.get("competitors", []),
-    }
+    mvp_req = MVPFeatureRequest(
+        startupIdea=request.startupIdea,
+        description=request.description or "",
+        industry=request.industry or web_res.get("industry", "Technology"),
+        location=request.targetCountry or "Global",
+        startupStage=request.startupStage or "Idea",
+        businessModel=request.businessModel or "B2B",
+        targetCustomer=target_cust,
+        keyFeatures=request.keyFeatures or [],
+        marketOpportunity=mkt_res.get("marketOpportunity", {}),
+        marketOpportunityScore=mkt_res.get("marketOpportunityScore", 0),
+        customerInsights=mkt_res.get("customerInsights", {}),
+        recommendations=recs,
+        competitors=comp_res.get("competitors", []),
+    )
     try:
-        resp = requests.post(mvp_endpoint, json=payload, timeout=25)
-        resp.raise_for_status()
-        return resp.json()
+        return run_mvp_feature_recommendation_agent(mvp_req)
     except Exception as exc:
-        logger.exception("Failed calling MVP Feature Agent at %s: %s", mvp_endpoint, exc)
+        logger.exception("Failed executing MVP Feature Agent: %s", exc)
         return {
             "status": "error",
             "detail": str(exc),
@@ -310,8 +319,7 @@ def _run_gtm_job(
     swot_result: dict,
     mvp_result: dict,
 ) -> dict:
-    """Isolated Go-to-Market Strategy job that calls the standalone agent endpoint on port 8905."""
-    gtm_endpoint = "http://127.0.0.1:8905/go-to-market-strategy"
+    """Isolated Go-to-Market Strategy job using direct in-process Python execution."""
     mkt_res = market_result if isinstance(market_result, dict) else {}
     comp_res = competitor_result if isinstance(competitor_result, dict) else {}
     swot_res = swot_result if isinstance(swot_result, dict) else {}
@@ -332,20 +340,18 @@ def _run_gtm_job(
     if not rec_features:
         rec_features = request.keyFeatures or ["Core Functionality"]
 
-    payload = {
-        "startupIdea": request.startupIdea,
-        "targetCustomer": target_cust,
-        "marketOpportunity": mkt_opp_text,
-        "competitors": competitor_list,
-        "swot": swot_dict if isinstance(swot_dict, dict) else {},
-        "recommendedFeatures": rec_features,
-    }
+    gtm_req = GTMStrategyRequest(
+        startupIdea=request.startupIdea,
+        targetCustomer=target_cust,
+        marketOpportunity=mkt_opp_text,
+        competitors=competitor_list,
+        swot=swot_dict if isinstance(swot_dict, dict) else {},
+        recommendedFeatures=rec_features,
+    )
     try:
-        resp = requests.post(gtm_endpoint, json=payload, timeout=25)
-        resp.raise_for_status()
-        return resp.json()
+        return run_go_to_market_strategy(gtm_req)
     except Exception as exc:
-        logger.exception("Failed calling Go-to-Market Strategy Agent at %s: %s", gtm_endpoint, exc)
+        logger.exception("Failed executing Go-to-Market Strategy Agent: %s", exc)
         return {
             "status": "error",
             "detail": str(exc),
@@ -458,18 +464,22 @@ def validate(request: StartupRequest):
             orchestrate_competitor_discovery, _run_competitor_job, request, web_result
         )
 
-        # Process futures as they complete — start comparison as soon as
-        # competitor finishes, regardless of whether market is done yet.
         comparison_future = None
+        swot_future = None
+        market_done = False
+        competitor_done = False
+
         for future in concurrent.futures.as_completed([f_market, f_competitor]):
             if future is f_market:
                 market_result = future.result()
+                market_done = True
                 logger.info(
                     "PIPELINE PROFILE | Market Opportunity Agent done | Elapsed: %.3fs",
                     time.perf_counter() - t_parallel_start,
                 )
             elif future is f_competitor:
                 competitor_result = future.result()
+                competitor_done = True
                 logger.info(
                     "PIPELINE PROFILE | Competitor Discovery Agent done | Elapsed: %.3fs",
                     time.perf_counter() - t_parallel_start,
@@ -482,35 +492,63 @@ def validate(request: StartupRequest):
                     web_result,
                     competitor_result,
                 )
-                logger.info("PIPELINE PROFILE | Comparison Agent started (overlapping Market)")
+                logger.info("PIPELINE PROFILE | Comparison Agent started (overlapping Market & SWOT)")
 
-        # Submit SWOT Risk Agent as soon as Market & Competitor results are available
-        f_swot = executor.submit(
-            orchestrate_swot_risk,
-            _run_swot_job,
+            # Submit SWOT Risk Agent as soon as BOTH Market & Competitor results are available
+            if market_done and competitor_done and swot_future is None:
+                swot_future = executor.submit(
+                    orchestrate_swot_risk,
+                    _run_swot_job,
+                    request,
+                    web_result,
+                    market_result,
+                    competitor_result,
+                )
+                logger.info("PIPELINE PROFILE | SWOT Risk Agent started (in parallel with Comparison)")
+
+        # Collect SWOT result (required for MVP Feature Recommendation)
+        swot_result = swot_future.result() if swot_future else None
+        logger.info(
+            "PIPELINE PROFILE | SWOT Risk Agent done | Elapsed: %.3fs",
+            time.perf_counter() - t_parallel_start,
+        )
+
+        # Submit MVP Feature Recommendation Agent
+        f_mvp = executor.submit(
+            orchestrate_mvp_feature,
+            _run_mvp_job,
             request,
             web_result,
             market_result,
             competitor_result,
+            swot_result,
         )
-        logger.info("PIPELINE PROFILE | SWOT Risk Agent started")
+        logger.info("PIPELINE PROFILE | MVP Feature Agent started")
+        mvp_result = f_mvp.result()
+        logger.info(
+            "PIPELINE PROFILE | MVP Feature Agent done | Elapsed: %.3fs",
+            time.perf_counter() - t_parallel_start,
+        )
 
-        # Submit MVP Feature Recommendation Agent concurrently; it will wait for SWOT result internally
-        def _run_mvp_with_swot():
-            # Wait for SWOT result
-            swot_res = f_swot.result()
-            return orchestrate_mvp_feature(
-                _run_mvp_job,
-                request,
-                web_result,
-                market_result,
-                competitor_result,
-                swot_res,
-            )
-        f_mvp = executor.submit(_run_mvp_with_swot)
-        logger.info("PIPELINE PROFILE | MVP Feature Agent started (concurrently with SWOT)")
+        # Submit GTM Strategy Agent
+        f_gtm = executor.submit(
+            orchestrate_gtm_strategy,
+            _run_gtm_job,
+            request,
+            web_result,
+            market_result,
+            competitor_result,
+            swot_result,
+            mvp_result,
+        )
+        logger.info("PIPELINE PROFILE | GTM Strategy Agent started")
+        gtm_result = f_gtm.result()
+        logger.info(
+            "PIPELINE PROFILE | GTM Strategy Agent done | Elapsed: %.3fs",
+            time.perf_counter() - t_parallel_start,
+        )
 
-        # Collect comparison result
+        # Collect comparison result if still running
         if comparison_future is not None:
             comparison_result = comparison_future.result()
         logger.info(
@@ -535,6 +573,7 @@ def validate(request: StartupRequest):
         "comparison": comparison_result or {},
         "swot_analysis": swot_result or {},
         "mvp_recommendation": mvp_result or {},
+        "go_to_market_strategy": gtm_result or {},
     }
 
 
@@ -558,8 +597,8 @@ def validate(request: StartupRequest):
     summary="Stream real-time pipeline progress",
     description=(
         "Runs the full validation pipeline with parallel execution for Stage 2 & 3, "
-        "and Stage 3→4 overlap. Streams SSE events for each stage. "
-        "Uses an async generator to avoid blocking uvicorn workers."
+        "Stage 3→4 overlap, and Stage 4 & 5 parallel concurrency. Streams SSE events "
+        "for each stage using an async generator."
     ),
     response_description="text/event-stream of stage progress and final result",
 )
@@ -574,7 +613,6 @@ def validate_stream(request: StartupRequest):
             return
 
         # ── Request-level cache check ──────────────────────────────────────
-        # Returns a single `done` event instantly on hit with 0 API calls.
         cache_key = _make_request_cache_key(request)
         with _REQUEST_CACHE_LOCK:
             cached = _REQUEST_CACHE.get(cache_key)
@@ -626,6 +664,13 @@ def validate_stream(request: StartupRequest):
 
             t_parallel_start = time.perf_counter()
 
+            market_result = None
+            competitor_result = None
+            comparison_result = None
+            swot_result = None
+            mvp_result = None
+            gtm_result = None
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 f_market = executor.submit(
                     orchestrate_market_opportunity, run_market_opportunity_agent, market_request
@@ -634,57 +679,64 @@ def validate_stream(request: StartupRequest):
                     orchestrate_competitor_discovery, _run_competitor_job, request, web_result
                 )
 
-                market_result = await loop.run_in_executor(None, f_market.result)
-                logger.info(
-                    "PIPELINE PROFILE | Market Opportunity Agent done | Elapsed: %.3fs",
-                    time.perf_counter() - t_parallel_start,
-                )
-                yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
+                comparison_future = None
+                swot_future = None
+                market_done = False
+                competitor_done = False
 
-                competitor_result = await loop.run_in_executor(None, f_competitor.result)
-                logger.info(
-                    "PIPELINE PROFILE | Competitor Discovery Agent done | Elapsed: %.3fs",
-                    time.perf_counter() - t_parallel_start,
-                )
-                yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
+                pending = {f_market, f_competitor}
+                while pending:
+                    done_set, pending = await loop.run_in_executor(
+                        None,
+                        lambda p: concurrent.futures.wait(
+                            p, return_when=concurrent.futures.FIRST_COMPLETED
+                        ),
+                        pending,
+                    )
+                    for f in done_set:
+                        if f is f_market:
+                            market_result = f.result()
+                            market_done = True
+                            logger.info(
+                                "PIPELINE PROFILE | Market Opportunity Agent done | Elapsed: %.3fs",
+                                time.perf_counter() - t_parallel_start,
+                            )
+                            yield f"data: {json.dumps({'stage': 'market_opp', 'status': 'done'})}\n\n"
+                        elif f is f_competitor:
+                            competitor_result = f.result()
+                            competitor_done = True
+                            logger.info(
+                                "PIPELINE PROFILE | Competitor Discovery Agent done | Elapsed: %.3fs",
+                                time.perf_counter() - t_parallel_start,
+                            )
+                            yield f"data: {json.dumps({'stage': 'competitor', 'status': 'done'})}\n\n"
+                            
+                            # ── Stage 3→4 OVERLAP: start comparison immediately ──
+                            yield f"data: {json.dumps({'stage': 'comparison', 'status': 'running'})}\n\n"
+                            comparison_future = executor.submit(
+                                orchestrate_comparison,
+                                _run_comparison_job,
+                                request,
+                                web_result,
+                                competitor_result,
+                            )
+                            logger.info("PIPELINE PROFILE | Comparison Agent started")
 
-                # ──────────────────────────────────────────────────
-                # STAGE 4 — Comparison
-                # ──────────────────────────────────────────────────
-                yield f"data: {json.dumps({'stage': 'comparison', 'status': 'running'})}\n\n"
-                comparison_future = executor.submit(
-                    orchestrate_comparison,
-                    _run_comparison_job,
-                    request,
-                    web_result,
-                    competitor_result,
-                )
-                logger.info("PIPELINE PROFILE | Comparison Agent started")
-                comparison_result = await loop.run_in_executor(
-                    None, comparison_future.result
-                )
-                logger.info(
-                    "PIPELINE PROFILE | Comparison Agent done | Elapsed: %.3fs",
-                    time.perf_counter() - t_parallel_start,
-                )
-                yield f"data: {json.dumps({'stage': 'comparison', 'status': 'done'})}\n\n"
+                        if market_done and competitor_done and swot_future is None:
+                            # ── Stage 5: SWOT & Risk starts immediately in parallel with Comparison ──
+                            yield f"data: {json.dumps({'stage': 'swot_risk', 'status': 'running'})}\n\n"
+                            swot_future = executor.submit(
+                                orchestrate_swot_risk,
+                                _run_swot_job,
+                                request,
+                                web_result,
+                                market_result,
+                                competitor_result,
+                            )
+                            logger.info("PIPELINE PROFILE | SWOT Risk Agent started (in parallel with Comparison)")
 
-                # ──────────────────────────────────────────────────
-                # STAGE 5 — SWOT & Risk Analysis
-                # ──────────────────────────────────────────────────
-                yield f"data: {json.dumps({'stage': 'swot_risk', 'status': 'running'})}\n\n"
-                swot_future = executor.submit(
-                    orchestrate_swot_risk,
-                    _run_swot_job,
-                    request,
-                    web_result,
-                    market_result,
-                    competitor_result,
-                )
-                logger.info("PIPELINE PROFILE | SWOT Risk Agent started")
-                swot_result = await loop.run_in_executor(
-                    None, swot_future.result
-                )
+                # Await SWOT result to yield its done event and trigger MVP
+                swot_result = await loop.run_in_executor(None, swot_future.result)
                 logger.info(
                     "PIPELINE PROFILE | SWOT Risk Agent done | Elapsed: %.3fs",
                     time.perf_counter() - t_parallel_start,
@@ -705,9 +757,7 @@ def validate_stream(request: StartupRequest):
                     swot_result,
                 )
                 logger.info("PIPELINE PROFILE | MVP Feature Agent started")
-                mvp_result = await loop.run_in_executor(
-                    None, mvp_future.result
-                )
+                mvp_result = await loop.run_in_executor(None, mvp_future.result)
                 logger.info(
                     "PIPELINE PROFILE | MVP Feature Agent done | Elapsed: %.3fs",
                     time.perf_counter() - t_parallel_start,
@@ -729,14 +779,21 @@ def validate_stream(request: StartupRequest):
                     mvp_result,
                 )
                 logger.info("PIPELINE PROFILE | GTM Strategy Agent started")
-                gtm_result = await loop.run_in_executor(
-                    None, gtm_future.result
-                )
+                gtm_result = await loop.run_in_executor(None, gtm_future.result)
                 logger.info(
                     "PIPELINE PROFILE | GTM Strategy Agent done | Elapsed: %.3fs",
                     time.perf_counter() - t_parallel_start,
                 )
                 yield f"data: {json.dumps({'stage': 'go_to_market', 'status': 'done'})}\n\n"
+
+                # Collect comparison result if still running and yield comparison done event
+                if comparison_future is not None:
+                    comparison_result = await loop.run_in_executor(None, comparison_future.result)
+                    logger.info(
+                        "PIPELINE PROFILE | Comparison Agent done | Elapsed: %.3fs",
+                        time.perf_counter() - t_parallel_start,
+                    )
+                    yield f"data: {json.dumps({'stage': 'comparison', 'status': 'done'})}\n\n"
 
 
             logger.info(

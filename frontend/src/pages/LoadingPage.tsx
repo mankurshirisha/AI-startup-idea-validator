@@ -89,16 +89,27 @@ const AGENTS: Agent[] = [
   },
 ]
 
-/* ─── Backend stage → AGENTS array index ─────────────── */
-const STAGE_TO_IDX: Record<string, number> = {
-  web_search:    0,
-  market_opp:    1,
-  competitor:     2,
-  comparison:     3,
-  swot_risk:      4,
-  mvp_feature:    5,
-  go_to_market:   6,
-}
+  /* ── Backend stage → AGENTS array index & active labels ── */
+  const STAGE_LABELS: Record<string, string> = {
+    web_search:    'Analyzing startup idea & search signals...',
+    market_opp:    'Analyzing market opportunity & addressable size...',
+    competitor:    'Researching competitors & market gaps...',
+    comparison:    'Comparing competitors & feature benchmarks...',
+    swot_risk:     'Analyzing SWOT & business risks...',
+    mvp_feature:   'Identifying MVP feature roadmap...',
+    go_to_market:  'Building Go-to-Market strategy...',
+    done:          'Preparing final dashboard...',
+  }
+
+  const STAGE_TO_IDX: Record<string, number> = {
+    web_search:    0,
+    market_opp:    1,
+    competitor:     2,
+    comparison:     3,
+    swot_risk:      4,
+    mvp_feature:    5,
+    go_to_market:   6,
+  }
 
 
 
@@ -203,6 +214,7 @@ export default function LoadingPage() {
   const [completedAgents, setCompletedAgents] = useState<Set<number>>(new Set())
   const [allDone, setAllDone] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  const [activeStageMsg, setActiveStageMsg] = useState<string | null>(null)
 
   /* ── Backend Integration State ── */
   const [apiResult, setApiResult] = useState<ValidationResult | null>(null)
@@ -294,7 +306,12 @@ export default function LoadingPage() {
               setAllDone(true)
               setRunningAgents(new Set())
               setCompletedAgents(new Set(AGENTS.map((_, i) => i)))
+              setActiveStageMsg(STAGE_LABELS['done'])
               return
+            }
+
+            if (STAGE_LABELS[stage]) {
+              setActiveStageMsg(STAGE_LABELS[stage])
             }
 
             const idx = STAGE_TO_IDX[stage]
@@ -373,7 +390,7 @@ export default function LoadingPage() {
           keyFeatures,
         },
       })
-    }, 4000)
+    }, 300)
     return () => clearTimeout(t)
   }, [allDone, apiResult, errorMsg, navigate, idea, description])
 
@@ -808,7 +825,7 @@ export default function LoadingPage() {
                       letterSpacing: '-0.01em',
                     }}
                   >
-                    {personalizedMessages[msgIdx]}
+                    {activeStageMsg || personalizedMessages[msgIdx]}
                   </motion.p>
                 )}
               </AnimatePresence>

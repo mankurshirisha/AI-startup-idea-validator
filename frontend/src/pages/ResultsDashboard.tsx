@@ -14,7 +14,7 @@
  *  9. References (Collapsed at very bottom)
  */
 
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
 import type { ValidationResult } from '@/types/dashboard'
@@ -396,6 +396,50 @@ export default function ResultsDashboard() {
     keyFeatures: state?.keyFeatures || rawData.keyFeatures || DEFAULT_DATA.keyFeatures,
   }
 
+  const DASHBOARD_TABS = [
+    { id: 'section-summary', label: 'Executive Summary' },
+    { id: 'section-score', label: 'Score Breakdown' },
+    { id: 'section-market', label: 'Market Opportunity' },
+    { id: 'section-competitors', label: 'Competitors' },
+    { id: 'section-swot', label: 'SWOT Analysis' },
+    { id: 'section-mvp', label: 'MVP Roadmap' },
+    { id: 'section-gtm', label: 'GTM Strategy' },
+    { id: 'section-recommendations', label: 'Recommendations' },
+    { id: 'section-investor', label: 'Investor View' },
+    { id: 'section-risk', label: 'Risk Analysis' },
+  ]
+
+  const [activeTab, setActiveTab] = useState('section-summary')
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY + 220
+      for (const tab of DASHBOARD_TABS) {
+        const el = document.getElementById(tab.id)
+        if (el) {
+          const top = el.offsetTop
+          const height = el.offsetHeight
+          if (scrollPosition >= top && scrollPosition < top + height) {
+            setActiveTab(tab.id)
+            break
+          }
+        }
+      }
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const handleTabClick = (sectionId: string) => {
+    setActiveTab(sectionId)
+    const el = document.getElementById(sectionId)
+    if (el) {
+      const yOffset = -80
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset
+      window.scrollTo({ top: y, behavior: 'smooth' })
+    }
+  }
+
   return (
     <div
       style={{
@@ -430,40 +474,109 @@ export default function ResultsDashboard() {
           }}
         >
           {/* 1. Merged Executive Summary Hero Banner */}
-          <ExecutiveSummary data={data} />
+          <div id="section-summary">
+            <ExecutiveSummary data={data} />
+          </div>
+
+          {/* ── Horizontal Navigation Bar (Immediately below Startup Summary) ── */}
+          <div
+            style={{
+              position: 'sticky',
+              top: '64px',
+              zIndex: 30,
+              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              borderRadius: '16px',
+              border: '1px solid #e8e8f0',
+              padding: '8px 12px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              display: 'flex',
+              gap: '6px',
+              overflowX: 'auto',
+              whiteSpace: 'nowrap',
+              scrollbarWidth: 'none',
+              margin: '-8px 0 8px 0',
+            }}
+          >
+            {DASHBOARD_TABS.map((tab) => {
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabClick(tab.id)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '100px',
+                    fontSize: '13px',
+                    fontWeight: isActive ? 700 : 500,
+                    color: isActive ? '#FFFFFF' : '#5a5a8a',
+                    backgroundColor: isActive ? '#3b3bdb' : '#f4f4f8',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
 
           {/* 2. Score Breakdown */}
-          <ScoreBreakdown data={data} />
+          <div id="section-score">
+            <ScoreBreakdown data={data} />
+          </div>
 
           {/* 3. Market Opportunity */}
-          <MarketOpportunity market={data.market} targetCountry={data.targetCountry} />
+          <div id="section-market">
+            <MarketOpportunity market={data.market} targetCountry={data.targetCountry} />
+          </div>
 
           {/* 4. Competitor Analysis (View Details toggle) */}
-          <CompetitorAnalysis
-            competitors={data.enrichedCompetitors || data.competitors}
-            targetCountry={data.targetCountry}
-          />
+          <div id="section-competitors">
+            <CompetitorAnalysis
+              competitors={data.enrichedCompetitors || data.competitors}
+              targetCountry={data.targetCountry}
+            />
+          </div>
 
           {/* 5. SWOT Analysis (View Details toggle) */}
-          <SWOTAnalysis data={data} />
+          <div id="section-swot">
+            <SWOTAnalysis data={data} />
+          </div>
 
           {/* 6. MVP Feature Recommendation */}
-          <MVPRecommendation data={data} />
+          <div id="section-mvp">
+            <MVPRecommendation data={data} />
+          </div>
 
           {/* 7. Go-to-Market Strategy */}
-          <GTMStrategy data={data} />
+          <div id="section-gtm">
+            <GTMStrategy data={data} />
+          </div>
 
           {/* 8. Recommendations */}
-          <Recommendations recommendations={data.recommendations} data={data} />
+          <div id="section-recommendations">
+            <Recommendations recommendations={data.recommendations} data={data} />
+          </div>
 
-          {/* 7. Investor Perspective */}
-          <InvestorPerspective data={data} />
+          {/* 9. Investor Perspective */}
+          <div id="section-investor">
+            <InvestorPerspective data={data} />
+          </div>
 
-          {/* 8. Risk Analysis (View Details toggle) */}
-          <RiskAnalysis data={data} />
+          {/* 10. Risk Analysis (View Details toggle) */}
+          <div id="section-risk">
+            <RiskAnalysis data={data} />
+          </div>
 
-          {/* 9. References (Collapsed at bottom) */}
-          <Sources sources={data.sources} />
+          {/* 11. References (Collapsed at bottom) */}
+          <div id="section-sources">
+            <Sources sources={data.sources} />
+          </div>
 
           {/* Bottom Spacing */}
           <div style={{ height: '32px' }} />
